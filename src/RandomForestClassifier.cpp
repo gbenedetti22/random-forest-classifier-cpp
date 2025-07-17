@@ -10,52 +10,36 @@
 using namespace std;
 
 RandomForestClassifier::RandomForestClassifier(const int n_tress) {
+    srand(time(nullptr));
     trees.reserve(n_tress);
 }
-
-void RandomForestClassifier::fit(const std::vector<Sample> &data) {
-    if (data.empty()) {
-        std::cerr << "Cannot build the tree on dataset" << std::endl;
+void RandomForestClassifier::fit(const vector<vector<double>> &X, const vector<int> &y) {
+    if (X.empty() || y.empty()) {
+        cerr << "Cannot build the tree on dataset" << endl;
         return;
     }
-    int num_trees = trees.capacity();
-
-    indicators::ProgressBar bar{
-        indicators::option::BarWidth{50},
-        indicators::option::Fill{"■"},
-        indicators::option::Lead{"■"},
-        indicators::option::PostfixText{"Training RandomForest"},
-        indicators::option::ShowPercentage{true},
-        indicators::option::ShowElapsedTime{true},
-        indicators::option::MaxProgress(num_trees),
-        indicators::option::FontStyles{std::vector{indicators::FontStyle::bold}}
-    };
-
-    bar.print_progress();
+    const int num_trees = trees.capacity();
 
     for (int i = 0; i < num_trees; i++) {
-        vector<Sample> sample = bootstrap_sample(data);
+        vector<vector<double>> X_sample;
+        vector<int> y_sample;
+        bootstrap_sample(X, y, X_sample, y_sample);
+        
         DecisionTreeClassifier tree("Decision Tree n. " + i);
-        tree.train(sample);
+        tree.train(X_sample, y_sample);
         trees.push_back(tree);
-
-        bar.tick();
     }
 
-    if (!bar.is_completed()) {
-        bar.mark_as_completed();
-    }
 }
 
-int RandomForestClassifier::predict(const Sample &s) const {
+int RandomForestClassifier::predict(const vector<double> &x) const {
     unordered_map<int, int> vote_counts;
-    for (const auto& tree : trees) {
-        int pred = tree.predict(s);
+    for (const auto &tree : trees) {
+        int pred = tree.predict(x);
         vote_counts[pred]++;
     }
-
     int majority_class = -1, max_votes = -1;
-    for (const auto& [label, count] : vote_counts) {
+    for (const auto &[label, count] : vote_counts) {
         if (count > max_votes) {
             max_votes = count;
             majority_class = label;
@@ -64,23 +48,26 @@ int RandomForestClassifier::predict(const Sample &s) const {
     return majority_class;
 }
 
-void RandomForestClassifier::score(const std::vector<Sample> &data) const {
-    int classfied = 0;
-
-    for (const Sample& sample : data) {
-        if (predict(sample) == sample.label) {
-            classfied++;
+double RandomForestClassifier::evaluate(const vector<vector<double>> &X, const vector<int> &y) const {
+    int classified = 0;
+    for (size_t i = 0; i < X.size(); ++i) {
+        if (predict(X[i]) == y[i]) {
+            classified++;
         }
     }
 
-    cout << "Accuracy: " << static_cast<double>(classfied) / data.size() << endl;
+    return static_cast<double>(classified) / X.size();
 }
 
-std::vector<Sample> RandomForestClassifier::bootstrap_sample(const std::vector<Sample> &data) {
-    vector<Sample> sample;
-    for (size_t i = 0; i < data.size(); ++i) {
-        const int idx = rand() % data.size();
-        sample.push_back(data[idx]);
+void RandomForestClassifier::bootstrap_sample(const vector<vector<double>> &X, const vector<int> &y, vector<vector<double>> &X_sample, vector<int> &y_sample) {
+    X_sample.clear();
+    y_sample.clear();
+
+    for (size_t i = 0; i < X.size(); ++i) {
+        const int idx = rand() % X.size();
+
+        X_sample.push_back(X[idx]);
+        y_sample.push_back(y[idx]);
     }
-    return sample;
+
 }
