@@ -1,7 +1,6 @@
 #include <vector>
 #include <fstream>
 #include <iostream>
-#include <numeric>
 
 #include "include/Dataset.h"
 #include "include/RandomForestClassifier.h"
@@ -18,13 +17,12 @@ int main() {
     cout << "Training set size: " << X_train.size() << endl;
     cout << "Test set size: " << X_test.size() << endl;
 
-    cout << "Training start.." << endl;
-    RandomForestClassifier model(1);
+    RandomForestClassifier model({.n_trees = 100, .random_seed = 8});
     model.fit(X_train, y_train);
+
     cout << "Training end! :)" << endl;
 
     const double accuracy = model.evaluate(X_test, y_test);
-
     cout << "Accuracy: " << accuracy <<endl;
 
     return 0;

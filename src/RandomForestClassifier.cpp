@@ -9,10 +9,6 @@
 #include "indicators.hpp"
 using namespace std;
 
-RandomForestClassifier::RandomForestClassifier(const int n_tress) {
-    srand(time(nullptr));
-    trees.reserve(n_tress);
-}
 void RandomForestClassifier::fit(const vector<vector<double>> &X, const vector<int> &y) {
     if (X.empty() || y.empty()) {
         cerr << "Cannot build the tree on dataset" << endl;
@@ -21,12 +17,18 @@ void RandomForestClassifier::fit(const vector<vector<double>> &X, const vector<i
     const int num_trees = trees.capacity();
 
     for (int i = 0; i < num_trees; i++) {
-        vector<vector<double>> X_sample;
-        vector<int> y_sample;
-        bootstrap_sample(X, y, X_sample, y_sample);
+        DecisionTreeClassifier tree(params.split_criteria, params.min_samples_split, params.max_features, params.random_seed);
+
+        if (params.bootstrap) {
+            vector<vector<double>> X_sample;
+            vector<int> y_sample;
+            bootstrap_sample(X, y, X_sample, y_sample);
+
+            tree.train(X_sample, y_sample);
+        }else {
+            tree.train(X, y);
+        }
         
-        DecisionTreeClassifier tree("Decision Tree n. " + i);
-        tree.train(X_sample, y_sample);
         trees.push_back(tree);
     }
 
@@ -59,9 +61,15 @@ double RandomForestClassifier::evaluate(const vector<vector<double>> &X, const v
     return static_cast<double>(classified) / X.size();
 }
 
-void RandomForestClassifier::bootstrap_sample(const vector<vector<double>> &X, const vector<int> &y, vector<vector<double>> &X_sample, vector<int> &y_sample) {
+void RandomForestClassifier::bootstrap_sample(const vector<vector<double>> &X, const vector<int> &y, vector<vector<double>> &X_sample, vector<int> &y_sample) const {
     X_sample.clear();
     y_sample.clear();
+
+    if (params.random_seed.has_value()) {
+        std::srand(params.random_seed.value());
+    }else {
+        std::srand(std::time(nullptr));
+    }
 
     for (size_t i = 0; i < X.size(); ++i) {
         const int idx = rand() % X.size();

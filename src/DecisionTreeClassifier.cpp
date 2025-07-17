@@ -5,18 +5,14 @@
 #include "../include/DecisionTreeClassifier.h"
 
 #include <algorithm>
+#include <assert.h>
 #include <cmath>
-#include <cstring>
 #include <iostream>
 #include <limits>
 #include <map>
 #include <random>
 #include <ranges>
-#include <set>
 #include <stack>
-#include <unordered_set>
-
-#include "../include/FeatureSampler.h"
 
 using namespace std;
 
@@ -38,8 +34,8 @@ int DecisionTreeClassifier::predict(const vector<double> &x) const {
 void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const vector<int> &y) {
     root = new TreeNode();
 
-    const int num_features = X[0].size();
-    FeatureSampler feature_sampler;
+    const int total_features = X[0].size();
+    unordered_map<string, int> op_value = {{"sqrt", sqrt(total_features)}, {"log2", log2(total_features)}};
 
     stack<tuple<vector<vector<double> >, vector<int>, TreeNode *> > stack;
     stack.emplace(X, y, root);
@@ -57,15 +53,22 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
         map<int, int> label_counts;
         for (const auto &label: data_y) label_counts[label]++;
 
-        int min_samples_split = 2;
-
         if (label_counts.size() == 1 || y.size() < min_samples_split) {
             node->is_leaf = true;
             node->predicted_class = compute_majority_class(label_counts);
             continue;
         }
 
-        vector<int> selected_features = feature_sampler.sample_features(num_features, sqrt(num_features));
+        int n_features;
+        if (std::holds_alternative<int>(max_features)) {
+            n_features = std::get<int>(max_features);
+        }else if (std::holds_alternative<string>(max_features)) {
+            auto op = std::get<string>(max_features);
+            n_features = op_value[op];
+        }
+
+        assert(n_features > 0 && "Invalid max_feature parameter");
+        vector<int> selected_features = sample_features(total_features, n_features);
 
         for (int f : selected_features) {
             auto [threshold, impurity] = compute_treshold(data_X, data_y, f);
@@ -142,23 +145,19 @@ pair<double, double> DecisionTreeClassifier::compute_treshold(const vector<vecto
     double best_threshold = 0.0;
     double best_impurity = numeric_limits<double>::max();
 
-    // Contatori per split incrementale
     map<int, int> left_counts, right_counts;
 
-    // Inizializza tutti i campioni a destra
-    for (const auto& [val, label] : feature_label_pairs) {
+    for (const auto &label: feature_label_pairs | views::values) {
         right_counts[label]++;
     }
 
     int left_total = 0;
     int right_total = feature_label_pairs.size();
 
-    // Prova ogni possibile threshold
     for (int i = 0; i < feature_label_pairs.size() - 1; ++i) {
         const auto& [current_val, current_label] = feature_label_pairs[i];
         const auto& [next_val, next_label] = feature_label_pairs[i + 1];
 
-        // Sposta il campione corrente da destra a sinistra
         left_counts[current_label]++;
         right_counts[current_label]--;
         if (right_counts[current_label] == 0) {
@@ -167,15 +166,12 @@ pair<double, double> DecisionTreeClassifier::compute_treshold(const vector<vecto
         left_total++;
         right_total--;
 
-        // Salta se i valori sono uguali
         if (current_val == next_val) continue;
 
-        // Calcola threshold come punto medio
         const double threshold = (current_val + next_val) / 2.0;
 
-        // Calcola impurity weighted
-        const double gini_left = gini_index(left_counts, left_total);
-        const double gini_right = gini_index(right_counts, right_total);
+        const double gini_left = get_impurity(left_counts, left_total);
+        const double gini_right = get_impurity(right_counts, right_total);
         const double weighted_impurity = (left_total * gini_left + right_total * gini_right) /
                                   (left_total + right_total);
 
@@ -188,15 +184,54 @@ pair<double, double> DecisionTreeClassifier::compute_treshold(const vector<vecto
     return {best_threshold, best_impurity};
 }
 
-double DecisionTreeClassifier::gini_index(const map<int, int>& counts, int total) {
+double DecisionTreeClassifier::gini(const map<int, int>& counts, const int total) {
     if (total == 0) return 0.0;
 
-    double impurity = 1.0;
+    double gini = 1.0;
     for (const auto &count: counts | views::values) {
-        double p = static_cast<double>(count) / total;
-        impurity -= p * p;
+        const double p = static_cast<double>(count) / total;
+        gini -= p * p;
     }
-    return impurity;
+    return gini;
+}
+
+double DecisionTreeClassifier::entropy(const std::map<int, int>& counts, const int total) {
+    double entropy = 0.0;
+    for (const int count : counts | std::views::values) {
+        double prob = static_cast<double>(count) / total;
+        if (prob > 0) {
+            entropy -= prob * std::log2(prob);
+        }
+    }
+    return entropy;
+}
+
+
+double DecisionTreeClassifier::get_impurity(const map<int, int>& counts, const int total) {
+    if (split_criteria == "gini") {
+        return gini(counts, total);
+    }
+
+    if (split_criteria == "entropy") {
+        return entropy(counts, total);
+    }
+
+    cerr << "Unknown split criteria " << split_criteria << endl;
+    exit(1);
+}
+
+vector<int> DecisionTreeClassifier::sample_features(const int total_features, const int n_features) {
+    vector<int> all_features(total_features);
+    iota(all_features.begin(), all_features.end(), 0);
+    if (total_features == n_features) return all_features;
+
+    for (int i = 0; i < n_features; i++) {
+        const int j = uniform_int_distribution(i, total_features - 1)(rng);
+        swap(all_features[i], all_features[j]);
+    }
+
+    all_features.resize(n_features);
+    return all_features;
 }
 
 int DecisionTreeClassifier::compute_majority_class(const map<int, int> &counts) {

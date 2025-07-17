@@ -5,10 +5,13 @@
 #ifndef DECISIONTREECLASSIFIER_H
 #define DECISIONTREECLASSIFIER_H
 #include <map>
+#include <optional>
+#include <random>
 #include <utility>
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <variant>
 
 using SplitResult = std::tuple<std::vector<std::vector<double>>, std::map<int, int>, std::vector<std::vector<double>>, std::map<int, int>, std::vector<int>, std::vector<int>>;
 struct TreeNode {
@@ -25,24 +28,43 @@ struct TreeNode {
 
 class DecisionTreeClassifier {
     TreeNode* root;
+    std::mt19937 rng;
 
     void build_tree(const std::vector<std::vector<double>>& X, const std::vector<int>& y);
 
     static auto split_left_right(const std::vector<std::vector<double>> &X, const std::vector<int> &y, double th, int f)->SplitResult;
-    static std::pair<double, double> compute_treshold(const std::vector<std::vector<double> > &X,
+    std::pair<double, double> compute_treshold(const std::vector<std::vector<double> > &X,
                                                       const std::vector<int> &y, int f);
     static int compute_majority_class(const std::map<int, int>& counts);
     static int compute_error(const std::map<int, int>& counts, const std::vector<int>& y_test);
 
-    static double gini_index(const std::map<int, int> &counts, int total);
+    static double gini(const std::map<int, int> &counts, int total);
+
+    static double entropy(const std::map<int, int> &counts, int total);
+
+    double get_impurity(const std::map<int, int> &counts, int total);
+
+    std::vector<int> sample_features(int total_features, int n_features);
 
 public:
-    std::string id;
-    DecisionTreeClassifier() : root(nullptr){}
-    explicit DecisionTreeClassifier(std::string id) : root(nullptr), id(std::move(id)) {}
+    const std::string &split_criteria;
+    int min_samples_split;
+    const std::variant<int, std::string>& max_features;
+    const std::optional<int> random_seed;
+
+DecisionTreeClassifier(const std::string &split_criteria, const int min_samples_split, const std::variant<int, std::string> &max_features,
+        const std::optional<int> &random_seed)
+        : root(nullptr), split_criteria(split_criteria),
+          min_samples_split(min_samples_split),
+          max_features(max_features),
+          random_seed(random_seed) {
+    if (random_seed.has_value()) {
+        rng = std::mt19937(random_seed.value());
+    }
+    }
+
     void train(const std::vector<std::vector<double>>& X, const std::vector<int>& y);
     int predict(const std::vector<double>& x) const;
-    void set_class_weights(const std::unordered_map<int, double>& weights);
 };
 
 
