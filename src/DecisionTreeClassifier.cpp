@@ -13,11 +13,13 @@
 #include <random>
 #include <ranges>
 #include <stack>
+#include <tuple>
+#include <tuple>
 
 using namespace std;
 
-void DecisionTreeClassifier::train(const vector<vector<double> > &X, const vector<int> &y, vector<vector<int>>& labels_mapping) {
-    build_tree(X, y, labels_mapping);
+void DecisionTreeClassifier::train(const vector<vector<double> > &X, const vector<int> &y, vector<int>& samples, vector<vector<int>>& labels_mapping) {
+    build_tree(X, y, samples, labels_mapping);
 }
 
 int DecisionTreeClassifier::predict(const vector<double> &x) const {
@@ -31,35 +33,37 @@ int DecisionTreeClassifier::predict(const vector<double> &x) const {
     return node->predicted_class;
 }
 
-void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const vector<int> &y, vector<vector<int>>& labels_mapping) {
+void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const vector<int> &y, vector<int>& samples, vector<vector<int>>& labels_mapping) {
     root = new TreeNode();
 
     const int total_features = X.size();
     unordered_map<string, int> op_value = {{"sqrt", sqrt(total_features)}, {"log2", log2(total_features)}};
 
-    stack<tuple<vector<vector<double> >, vector<int>, TreeNode *> > stack;
-    stack.emplace(X, y, root);
+    stack<tuple<vector<int>, TreeNode *> > stack;
+    stack.emplace(samples, root);
 
     while (!stack.empty()) {
-        auto [data_X, data_y, node] = stack.top();
+        auto [indices, node] = std::move(stack.top());
         stack.pop();
 
         int best_feature = -1;
         double best_threshold = 0.0;
         double best_error = numeric_limits<int>::max();
-        vector<vector<double> > best_left_X, best_right_X;
-        vector<int> best_left_y, best_right_y;
+        vector<int> best_left_X, best_right_X;
 
         map<int, int> label_counts;
-        for (const auto &label: data_y) label_counts[label]++;
+        // for (const auto &label: data_y) label_counts[label]++;
+        for (const int i : indices) {
+            label_counts[y[i]]++;
+        }
 
-        if (label_counts.size() == 1 || y.size() < min_samples_split) {
+        if (label_counts.size() == 1 || indices.size() < min_samples_split) {
             node->is_leaf = true;
             node->predicted_class = compute_majority_class(label_counts);
             continue;
         }
 
-        int n_features;
+        int n_features = 0;
         if (std::holds_alternative<int>(max_features)) {
             n_features = std::get<int>(max_features);
         } else if (std::holds_alternative<string>(max_features)) {
@@ -71,11 +75,10 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
         vector<int> selected_features = sample_features(total_features, n_features);
 
         for (int f: selected_features) {
-            auto [threshold, impurity] = compute_treshold(data_X, data_y, f);
+            auto [threshold, impurity] = compute_treshold(X, y, indices, f);
 
             if (impurity < best_error) {
-                auto [left_X, right_X, left_y, right_y] =
-                        split_left_right(data_X, data_y, threshold, f);
+                auto [left_X, right_X] = split_left_right(X, y, indices, threshold, f);
 
                 if (!left_X.empty() && !right_X.empty()) {
                     best_error = impurity;
@@ -84,8 +87,6 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
 
                     best_left_X = left_X;
                     best_right_X = right_X;
-                    best_left_y = left_y;
-                    best_right_y = right_y;
                 }
             }
         }
@@ -105,23 +106,19 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
         node->left = left_node;
         node->right = right_node;
 
-        stack.emplace(move(best_left_X), move(best_left_y), left_node);
-        stack.emplace(move(best_right_X), move(best_right_y), right_node);
+        stack.emplace(move(best_left_X), left_node);
+        stack.emplace(move(best_right_X), right_node);
     }
 }
 
 auto DecisionTreeClassifier::split_left_right(const vector<vector<double> > &X,
                                               const vector<int> &y,
+                                              vector<int> &indices,
                                               const double th,
                                               const int f) -> SplitResult {
-    int num_features = X.size();
-    int num_samples = X[0].size();
-
-    // Pre-alloca spazio vuoto per performance
     vector<int> left_indices, right_indices;
 
-    // 1. Dividi gli indici in base alla soglia sulla feature f
-    for (int i = 0; i < num_samples; ++i) {
+    for (int i : indices) {
         if (X[f][i] < th) {
             left_indices.push_back(i);
         } else {
@@ -129,43 +126,17 @@ auto DecisionTreeClassifier::split_left_right(const vector<vector<double> > &X,
         }
     }
 
-    // 2. Costruisci left_X e right_X mantenendo la struttura trasposta
-    vector<vector<double> > left_X(num_features), right_X(num_features);
-    for (int feat = 0; feat < num_features; ++feat) {
-        left_X[feat].reserve(left_indices.size());
-        right_X[feat].reserve(right_indices.size());
-
-        for (int i: left_indices) {
-            left_X[feat].push_back(X[feat][i]);
-        }
-        for (int i: right_indices) {
-            right_X[feat].push_back(X[feat][i]);
-        }
-    }
-
-    // 3. Costruisci left_y e right_y
-    vector<int> left_y, right_y;
-    left_y.reserve(left_indices.size());
-    right_y.reserve(right_indices.size());
-
-    for (int i: left_indices) {
-        left_y.push_back(y[i]);
-    }
-    for (int i: right_indices) {
-        right_y.push_back(y[i]);
-    }
-
-    return make_tuple(left_X, right_X, left_y, right_y);
+    return make_tuple(left_indices, right_indices);
 }
 
 
 pair<double, double> DecisionTreeClassifier::compute_treshold(const vector<vector<double> > &X, const vector<int> &y,
-                                                              const int f) {
-    const int num_samples = X[0].size();
+                                                              vector<int> &indices, const int f) {
+    const int num_samples = indices.size();
     vector<pair<double, int> > feature_label_pairs;
     feature_label_pairs.reserve(num_samples);
 
-    for (int i = 0; i < num_samples; ++i) {
+    for (const int i : indices) {
         feature_label_pairs.emplace_back(X[f][i], y[i]);
     }
 

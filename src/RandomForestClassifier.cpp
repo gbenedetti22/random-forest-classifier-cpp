@@ -84,7 +84,7 @@ vector<int> sort_labels_by_features(const vector<int> &labels, const vector<doub
     return sorted_labels;
 }
 
-void RandomForestClassifier::fit(const vector<vector<double>> &X, const vector<int> &y) {
+void RandomForestClassifier::fit(vector<vector<double>> &X, const vector<int> &y) {
     if (X.empty() || y.empty()) {
         cerr << "Cannot build the tree on dataset" << endl;
         return;
@@ -95,20 +95,26 @@ void RandomForestClassifier::fit(const vector<vector<double>> &X, const vector<i
         DecisionTreeClassifier tree(params.split_criteria, params.min_samples_split, params.max_features, params.random_seed);
 
         if (params.bootstrap) {
-            vector<vector<double>> X_sample;
-            vector<int> y_sample;
-            bootstrap_sample(X, y, X_sample, y_sample);
+            vector<int> indices;
+            transpose(X);
 
-            transpose(X_sample);
+            bootstrap_sample(X[0].size(), indices);
 
             vector<vector<int>> labels_mapping;
-            // labels_mapping.resize(X_sample.size());
-            // for (int j = 0; j < X_sample.size(); ++j) {
-            //     labels_mapping[j] = sort_labels_by_features(y_sample, X_sample[j]);
-            //     ranges::stable_sort(X_sample[j]);
+            // labels_mapping.resize(X[0].size());
+            // for (int j = 0; j < X.size(); ++j) {
+            //     labels_mapping[j] = sort_labels_by_features(y, X[j]);
+            //     vector<int> sorted_indices = sort_labels_by_features(indices, X[j]);
+            //
+            //     cout << endl;
+            //     ranges::stable_sort(X[j]);
+            //
+            //     for (int i : sorted_indices) {
+            //         cout << X[j][i] << " ";
+            //     }
             // }
 
-            tree.train(X_sample, y_sample, labels_mapping);
+            tree.train(X, y, indices, labels_mapping);
         }else {
             assert(false && "TODO");
             // tree.train(X, y, TODO);
@@ -145,9 +151,9 @@ double RandomForestClassifier::evaluate(const vector<vector<double>> &X, const v
     return static_cast<double>(classified) / X.size();
 }
 
-void RandomForestClassifier::bootstrap_sample(const vector<vector<double>> &X, const vector<int> &y, vector<vector<double>> &X_sample, vector<int> &y_sample) const {
-    X_sample.clear();
-    y_sample.clear();
+void RandomForestClassifier::bootstrap_sample(const int n_samples, vector<int> &indices) const {
+    indices.clear();
+    indices.reserve(n_samples);
 
     if (params.random_seed.has_value()) {
         std::srand(params.random_seed.value());
@@ -155,11 +161,10 @@ void RandomForestClassifier::bootstrap_sample(const vector<vector<double>> &X, c
         std::srand(std::time(nullptr));
     }
 
-    for (size_t i = 0; i < X.size(); ++i) {
-        const int idx = rand() % X.size();
+    for (size_t i = 0; i < n_samples; ++i) {
+        const int idx = rand() % n_samples;
 
-        X_sample.push_back(X[idx]);
-        y_sample.push_back(y[idx]);
+        indices.push_back(idx);
     }
 
 }

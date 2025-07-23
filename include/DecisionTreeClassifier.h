@@ -13,7 +13,7 @@
 #include <unordered_map>
 #include <variant>
 
-using SplitResult = std::tuple<std::vector<std::vector<double>>, std::vector<std::vector<double>>, std::vector<int>, std::vector<int>>;
+using SplitResult = std::tuple<std::vector<int>, std::vector<int>>;
 struct TreeNode {
     bool is_leaf;
     int predicted_class;
@@ -30,11 +30,12 @@ class DecisionTreeClassifier {
     TreeNode* root;
     std::mt19937 rng;
 
-    void build_tree(const std::vector<std::vector<double>> &X, const std::vector<int> &y, std::vector<std::vector<int>> &labels_mapping);
+    void build_tree(const std::vector<std::vector<double>> &X, const std::vector<int> &y, std::vector<int> &samples, std::vector<std::
+                    vector<int>> &labels_mapping);
 
-    static auto split_left_right(const std::vector<std::vector<double>> &X, const std::vector<int> &y, double th, int f)->SplitResult;
+    static auto split_left_right(const std::vector<std::vector<double>> &X, const std::vector<int> &y, std::vector<int> &indices, double th, int f)->SplitResult;
     std::pair<double, double> compute_treshold(const std::vector<std::vector<double>> &X,
-                                               const std::vector<int> &y, int f);
+                                               const std::vector<int> &y, std::vector<int> &indices, int f);
     static int compute_majority_class(const std::map<int, int>& counts);
     static int compute_error(const std::map<int, int>& counts, const std::vector<int>& y_test);
 
@@ -63,7 +64,8 @@ DecisionTreeClassifier(const std::string &split_criteria, const int min_samples_
     }
     }
 
-    void train(const std::vector<std::vector<double>> &X, const std::vector<int> &y, std::vector<std::vector<int>> &labels_mapping);
+    void train(const std::vector<std::vector<double>> &X, const std::vector<int> &y, std::vector<int> &samples, std::vector<std::
+               vector<int>> &labels_mapping);
     int predict(const std::vector<double>& x) const;
 };
 

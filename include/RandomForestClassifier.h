@@ -25,7 +25,7 @@ public:
         trees.reserve(params.n_trees);
     }
 
-    void fit(const std::vector<std::vector<double> > &X, const std::vector<int> &y);
+    void fit(std::vector<std::vector<double>> &X, const std::vector<int> &y);
 
     int predict(const std::vector<double> &x) const;
 
@@ -35,8 +35,7 @@ private:
     RandomForestParams params;
     std::vector<DecisionTreeClassifier> trees;
 
-    void bootstrap_sample(const std::vector<std::vector<double> > &X, const std::vector<int> &y,
-                                 std::vector<std::vector<double> > &X_sample, std::vector<int> &y_sample) const;
+    void bootstrap_sample(int n_samples, std::vector<int> &indices) const;
 };
 
 
