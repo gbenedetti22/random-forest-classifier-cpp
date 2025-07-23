@@ -9,4 +9,4 @@ add_executable(dicision_tree src/Dataset.cpp main.cpp
         include/RandomForestClassifier.h
         src/DecisionTreeClassifier.cpp
         include/DecisionTreeClassifier.h
-        include/FeatureSampler.h)
+)

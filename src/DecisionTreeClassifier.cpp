@@ -5,7 +5,7 @@
 #include "../include/DecisionTreeClassifier.h"
 
 #include <algorithm>
-#include <assert.h>
+#include <cassert>
 #include <cmath>
 #include <iostream>
 #include <limits>
@@ -16,8 +16,8 @@
 
 using namespace std;
 
-void DecisionTreeClassifier::train(const vector<vector<double> > &X, const vector<int> &y) {
-    build_tree(X, y);
+void DecisionTreeClassifier::train(const vector<vector<double> > &X, const vector<int> &y, vector<vector<int>>& labels_mapping) {
+    build_tree(X, y, labels_mapping);
 }
 
 int DecisionTreeClassifier::predict(const vector<double> &x) const {
@@ -31,10 +31,10 @@ int DecisionTreeClassifier::predict(const vector<double> &x) const {
     return node->predicted_class;
 }
 
-void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const vector<int> &y) {
+void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const vector<int> &y, vector<vector<int>>& labels_mapping) {
     root = new TreeNode();
 
-    const int total_features = X[0].size();
+    const int total_features = X.size();
     unordered_map<string, int> op_value = {{"sqrt", sqrt(total_features)}, {"log2", log2(total_features)}};
 
     stack<tuple<vector<vector<double> >, vector<int>, TreeNode *> > stack;
@@ -62,7 +62,7 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
         int n_features;
         if (std::holds_alternative<int>(max_features)) {
             n_features = std::get<int>(max_features);
-        }else if (std::holds_alternative<string>(max_features)) {
+        } else if (std::holds_alternative<string>(max_features)) {
             auto op = std::get<string>(max_features);
             n_features = op_value[op];
         }
@@ -70,12 +70,12 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
         assert(n_features > 0 && "Invalid max_feature parameter");
         vector<int> selected_features = sample_features(total_features, n_features);
 
-        for (int f : selected_features) {
+        for (int f: selected_features) {
             auto [threshold, impurity] = compute_treshold(data_X, data_y, f);
 
             if (impurity < best_error) {
-                auto [left_X, left_counts, right_X, right_counts, left_y, right_y] =
-                    split_left_right(data_X, data_y, threshold, f);
+                auto [left_X, right_X, left_y, right_y] =
+                        split_left_right(data_X, data_y, threshold, f);
 
                 if (!left_X.empty() && !right_X.empty()) {
                     best_error = impurity;
@@ -110,34 +110,63 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
     }
 }
 
-auto DecisionTreeClassifier::split_left_right(const vector<vector<double> > &X, const vector<int> &y, const double th,
+auto DecisionTreeClassifier::split_left_right(const vector<vector<double> > &X,
+                                              const vector<int> &y,
+                                              const double th,
                                               const int f) -> SplitResult {
-    vector<vector<double> > left_X, right_X;
-    vector<int> left_y, right_y;
-    map<int, int> left_counts, right_counts;
+    int num_features = X.size();
+    int num_samples = X[0].size();
 
-    for (int i = 0; i < X.size(); ++i) {
-        if (X[i][f] < th) {
-            left_X.push_back(X[i]);
-            left_y.push_back(y[i]);
-            left_counts[y[i]]++;
+    // Pre-alloca spazio vuoto per performance
+    vector<int> left_indices, right_indices;
+
+    // 1. Dividi gli indici in base alla soglia sulla feature f
+    for (int i = 0; i < num_samples; ++i) {
+        if (X[f][i] < th) {
+            left_indices.push_back(i);
         } else {
-            right_X.push_back(X[i]);
-            right_y.push_back(y[i]);
-            right_counts[y[i]]++;
+            right_indices.push_back(i);
         }
     }
 
-    return make_tuple(left_X, left_counts, right_X, right_counts, left_y, right_y);
+    // 2. Costruisci left_X e right_X mantenendo la struttura trasposta
+    vector<vector<double> > left_X(num_features), right_X(num_features);
+    for (int feat = 0; feat < num_features; ++feat) {
+        left_X[feat].reserve(left_indices.size());
+        right_X[feat].reserve(right_indices.size());
+
+        for (int i: left_indices) {
+            left_X[feat].push_back(X[feat][i]);
+        }
+        for (int i: right_indices) {
+            right_X[feat].push_back(X[feat][i]);
+        }
+    }
+
+    // 3. Costruisci left_y e right_y
+    vector<int> left_y, right_y;
+    left_y.reserve(left_indices.size());
+    right_y.reserve(right_indices.size());
+
+    for (int i: left_indices) {
+        left_y.push_back(y[i]);
+    }
+    for (int i: right_indices) {
+        right_y.push_back(y[i]);
+    }
+
+    return make_tuple(left_X, right_X, left_y, right_y);
 }
+
 
 pair<double, double> DecisionTreeClassifier::compute_treshold(const vector<vector<double> > &X, const vector<int> &y,
                                                               const int f) {
-    vector<pair<double, int>> feature_label_pairs;
-    feature_label_pairs.reserve(X.size());
+    const int num_samples = X[0].size();
+    vector<pair<double, int> > feature_label_pairs;
+    feature_label_pairs.reserve(num_samples);
 
-    for (int i = 0; i < X.size(); ++i) {
-        feature_label_pairs.emplace_back(X[i][f], y[i]);
+    for (int i = 0; i < num_samples; ++i) {
+        feature_label_pairs.emplace_back(X[f][i], y[i]);
     }
 
     ranges::sort(feature_label_pairs);
@@ -155,8 +184,8 @@ pair<double, double> DecisionTreeClassifier::compute_treshold(const vector<vecto
     int right_total = feature_label_pairs.size();
 
     for (int i = 0; i < feature_label_pairs.size() - 1; ++i) {
-        const auto& [current_val, current_label] = feature_label_pairs[i];
-        const auto& [next_val, next_label] = feature_label_pairs[i + 1];
+        const auto &[current_val, current_label] = feature_label_pairs[i];
+        const auto &[next_val, next_label] = feature_label_pairs[i + 1];
 
         left_counts[current_label]++;
         right_counts[current_label]--;
@@ -173,7 +202,7 @@ pair<double, double> DecisionTreeClassifier::compute_treshold(const vector<vecto
         const double gini_left = get_impurity(left_counts, left_total);
         const double gini_right = get_impurity(right_counts, right_total);
         const double weighted_impurity = (left_total * gini_left + right_total * gini_right) /
-                                  (left_total + right_total);
+                                         (left_total + right_total);
 
         if (weighted_impurity < best_impurity) {
             best_impurity = weighted_impurity;
@@ -184,7 +213,7 @@ pair<double, double> DecisionTreeClassifier::compute_treshold(const vector<vecto
     return {best_threshold, best_impurity};
 }
 
-double DecisionTreeClassifier::gini(const map<int, int>& counts, const int total) {
+double DecisionTreeClassifier::gini(const map<int, int> &counts, const int total) {
     if (total == 0) return 0.0;
 
     double gini = 1.0;
@@ -195,9 +224,9 @@ double DecisionTreeClassifier::gini(const map<int, int>& counts, const int total
     return gini;
 }
 
-double DecisionTreeClassifier::entropy(const std::map<int, int>& counts, const int total) {
+double DecisionTreeClassifier::entropy(const std::map<int, int> &counts, const int total) {
     double entropy = 0.0;
-    for (const int count : counts | std::views::values) {
+    for (const int count: counts | std::views::values) {
         double prob = static_cast<double>(count) / total;
         if (prob > 0) {
             entropy -= prob * std::log2(prob);
@@ -207,7 +236,7 @@ double DecisionTreeClassifier::entropy(const std::map<int, int>& counts, const i
 }
 
 
-double DecisionTreeClassifier::get_impurity(const map<int, int>& counts, const int total) {
+double DecisionTreeClassifier::get_impurity(const map<int, int> &counts, const int total) {
     if (split_criteria == "gini") {
         return gini(counts, total);
     }
