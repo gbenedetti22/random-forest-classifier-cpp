@@ -32,7 +32,7 @@ class DecisionTreeClassifier {
     void build_tree(const std::vector<std::vector<double>> &X, const std::vector<int> &y, std::vector<int> &samples);
 
     static auto split_left_right(const std::vector<std::vector<double>> &X, const std::vector<int> &indices, double th, int f)->SplitResult;
-    std::pair<double, double> compute_treshold(const std::vector<std::vector<double>> &X,
+    std::pair<double, double> compute_threshold(const std::vector<std::vector<double>> &X,
                                                const std::vector<int> &y, std::vector<int> &indices, int f) const;
     static int compute_majority_class(const std::unordered_map<int, int> &counts);
     static int compute_error(const std::unordered_map<int, int> &counts, const std::vector<int> &y_test);

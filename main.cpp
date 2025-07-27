@@ -69,7 +69,7 @@ void print_duration(std::chrono::steady_clock::duration duration) {
 
 int main() {
     cout << "Loading dataset.." << endl;
-    auto [X, y] = Dataset::load_classification("susy", 200000);
+    auto [X, y] = Dataset::load_classification("susy", -1);
 
     auto [X_train, y_train, X_test, y_test] =
         Dataset::train_test_split(X, y, 0.7);

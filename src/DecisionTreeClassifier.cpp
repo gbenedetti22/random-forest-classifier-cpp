@@ -82,7 +82,7 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
         timer.stop("sample features");
 
         for (const int f: selected_features) {
-            auto [threshold, impurity] = compute_treshold(X, y, indices, f);
+            auto [threshold, impurity] = compute_threshold(X, y, indices, f);
 
             if (impurity < best_error) {
                 timer.start("split");
@@ -134,28 +134,22 @@ auto DecisionTreeClassifier::split_left_right(const vector<vector<double> > &X,
                                               const vector<int> &indices,
                                               const double th,
                                               const int f) -> SplitResult {
-    vector<int> left_indices, right_indices;
 
-    for (int i : indices) {
-        if (X[f][i] < th) {
-            left_indices.push_back(i);
-        } else {
-            right_indices.push_back(i);
-        }
-    }
+    const auto it = ranges::partition_point(indices, [&X, th, f](const int i) {
+        return X[f][i] < th;
+    });
+
+    vector left_indices(indices.begin(), it);
+    vector right_indices(it, indices.end());
 
     return make_tuple(left_indices, right_indices);
 }
 
-pair<double, double> DecisionTreeClassifier::compute_treshold(const vector<vector<double>> &X, const vector<int> &y,
+pair<double, double> DecisionTreeClassifier::compute_threshold(const vector<vector<double>> &X, const vector<int> &y,
                                                               vector<int> &indices, const int f) const {
-    const int num_samples = indices.size();
-    vector<pair<double, int>> feature_label_pairs;
-    feature_label_pairs.reserve(num_samples);
 
-    int num_classes = 0;
+    int num_classes = 1;
     for (const int i : indices) {
-        feature_label_pairs.emplace_back(X[f][i], y[i]);
         if (y[i] > num_classes) {
             num_classes = y[i];
         }
@@ -163,7 +157,14 @@ pair<double, double> DecisionTreeClassifier::compute_treshold(const vector<vecto
 
     timer.start("treshold: sorting");
 
-    pdqsort_branchless(feature_label_pairs.begin(), feature_label_pairs.end());
+    if (indices.size() > 1000) {
+        RadixSort::sortIndices(X[f], indices);
+    }else {
+        pdqsort_branchless(indices.begin(), indices.end(),
+                  [&X, f](const int a, const int b) {
+                      return X[f][a] < X[f][b];
+                  });
+    }
 
     timer.stop("treshold: sorting");
 
@@ -174,17 +175,22 @@ pair<double, double> DecisionTreeClassifier::compute_treshold(const vector<vecto
     left_counts.resize(num_classes);
     right_counts.resize(num_classes);
 
-    for (const auto &label: feature_label_pairs | views::values) {
-        right_counts[label]++;
+    for (const int idx : indices) {
+        right_counts[y[idx]]++;
     }
 
     int left_total = 0;
-    int right_total = feature_label_pairs.size();
+    int right_total = static_cast<int>(indices.size());
 
     timer.start("treshold: main");
-    for (int i = 0; i < feature_label_pairs.size() - 1; ++i) {
-        const auto &[current_val, current_label] = feature_label_pairs[i];
-        const auto &[next_val, next_label] = feature_label_pairs[i + 1];
+    for (int i = 0; i < indices.size() - 1; ++i) {
+        const int current_idx = indices[i];
+        const int next_idx = indices[i + 1];
+
+        const double current_val = X[f][current_idx];
+        const double next_val = X[f][next_idx];
+        const int current_label = y[current_idx];
+
         total_cycles++;
 
         left_counts[current_label]++;

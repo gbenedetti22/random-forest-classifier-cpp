@@ -49,9 +49,6 @@ public:
                 .font_color(Color::yellow)
                 .font_style({FontStyle::bold});
 
-        double total_duration = 0.0;
-        int total_calls = 0;
-
         for (const auto &[name, duration]: durations_) {
             const int count = counts_.at(name);
             const double max_d = max_durations_.at(name);
@@ -73,32 +70,7 @@ public:
                 seconds_stream.str(),
                 max_stream.str()
             });
-
-            total_duration += duration;
-            total_calls += count;
         }
-
-        const long long total_seconds_int = static_cast<long long>(total_duration);
-        const long long hours = total_seconds_int / 3600;
-        const long long minutes = (total_seconds_int % 3600) / 60;
-        const double seconds = total_duration - (hours * 3600) - (minutes * 60);
-
-        std::ostringstream total_seconds_stream;
-        total_seconds_stream << std::fixed << std::setprecision(6) << seconds;
-
-        table.add_row({
-            "Totale",
-            std::to_string(total_calls),
-            std::to_string(hours),
-            std::to_string(minutes),
-            total_seconds_stream.str(),
-            "---"
-        });
-
-        size_t last_row = table.size() - 1;
-        table[last_row].format()
-                .font_color(Color::cyan)
-                .font_style({FontStyle::bold});
 
         table.column(0).format().font_align(FontAlign::left); // Segmento
         table.column(1).format().font_align(FontAlign::right); // Chiamate
@@ -121,8 +93,6 @@ public:
         }
 
         table[0].format().border_bottom("─");
-
-        table[last_row].format().border_top("─");
 
         std::cout << "--- Sommario Timer ---\n";
         std::cout << table << std::endl;
