@@ -5,8 +5,11 @@
 #include "../include/RandomForestClassifier.h"
 
 #include <iostream>
+#include <set>
+#include <unordered_set>
 
 #include "indicators.hpp"
+#include "../include/Timer.h"
 using namespace std;
 
 void transpose(vector<vector<double> > &matrix) {
@@ -65,24 +68,6 @@ void transpose(vector<vector<double> > &matrix) {
         }
     }
 }
-vector<int> sort_labels_by_features(const vector<int> &labels, const vector<double> &features) {
-    assert(labels.size() == features.size() && "Labels should have the same size of Features");
-
-    vector<int> indices(features.size());
-    iota(indices.begin(), indices.end(), 0);
-
-    ranges::stable_sort(indices, [&features](const int i, const int j) {
-        return features[i] < features[j];
-    });
-
-    vector<int> sorted_labels;
-    sorted_labels.reserve(labels.size());
-    for (const int index : indices) {
-        sorted_labels.push_back(labels[index]);
-    }
-
-    return sorted_labels;
-}
 
 void RandomForestClassifier::fit(vector<vector<double>> &X, const vector<int> &y) {
     if (X.empty() || y.empty()) {
@@ -90,36 +75,27 @@ void RandomForestClassifier::fit(vector<vector<double>> &X, const vector<int> &y
         return;
     }
     const int num_trees = trees.capacity();
+    timer.start("transpose");
+    transpose(X);
+    timer.stop("transpose");
+    trees.reserve(num_trees);
 
     for (int i = 0; i < num_trees; i++) {
         DecisionTreeClassifier tree(params.split_criteria, params.min_samples_split, params.max_features, params.random_seed);
 
         if (params.bootstrap) {
             vector<int> indices;
-            transpose(X);
 
+            timer.start("bootstrap");
             bootstrap_sample(X[0].size(), indices);
+            timer.stop("bootstrap");
 
-            vector<vector<int>> labels_mapping;
-            // labels_mapping.resize(X[0].size());
-            // for (int j = 0; j < X.size(); ++j) {
-            //     labels_mapping[j] = sort_labels_by_features(y, X[j]);
-            //     vector<int> sorted_indices = sort_labels_by_features(indices, X[j]);
-            //
-            //     cout << endl;
-            //     ranges::stable_sort(X[j]);
-            //
-            //     for (int i : sorted_indices) {
-            //         cout << X[j][i] << " ";
-            //     }
-            // }
-
-            tree.train(X, y, indices, labels_mapping);
+            tree.train(X, y, indices);
         }else {
             assert(false && "TODO");
             // tree.train(X, y, TODO);
         }
-        
+
         trees.push_back(tree);
     }
 }

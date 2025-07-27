@@ -25,11 +25,13 @@ public:
         trees.reserve(params.n_trees);
     }
 
+    void subsample(int n_total_samples, double fraction, std::vector<int> &indices) const;
+
     void fit(std::vector<std::vector<double>> &X, const std::vector<int> &y);
 
-    int predict(const std::vector<double> &x) const;
+    [[nodiscard]] int predict(const std::vector<double> &x) const;
 
-    double evaluate(const std::vector<std::vector<double> > &X, const std::vector<int> &y) const;
+    [[nodiscard]] double evaluate(const std::vector<std::vector<double> > &X, const std::vector<int> &y) const;
 
 private:
     RandomForestParams params;
