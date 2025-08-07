@@ -35,26 +35,6 @@ int DecisionTreeClassifier::predict(const vector<double> &x) const {
     return node->predicted_class;
 }
 
-auto split_left_right_old(const vector<vector<double> > &X,
-                          const vector<int> &indices,
-                          const double th,
-                          const int f) -> SplitResult {
-    vector<int> left_indices, right_indices;
-
-    left_indices.reserve(indices.size());
-    right_indices.reserve(indices.size());
-
-    for (int idx: indices) {
-        if (X[f][idx] < th) {
-            left_indices.push_back(idx);
-        } else {
-            right_indices.push_back(idx);
-        }
-    }
-
-    return std::move(tuple{left_indices, right_indices});
-}
-
 void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const vector<int> &y, vector<int> &samples) {
     root = new TreeNode();
 
