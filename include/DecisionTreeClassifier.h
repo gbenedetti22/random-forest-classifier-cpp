@@ -33,7 +33,8 @@ class DecisionTreeClassifier {
 
     static auto split_left_right(const std::vector<std::vector<double>> &X, const std::vector<int> &indices, double th, int f)->SplitResult;
     std::pair<double, double> compute_threshold(const std::vector<std::vector<double>> &X,
-                                               const std::vector<int> &y, std::vector<int> &indices, int f) const;
+                                                const std::vector<int> &y, std::vector<int> &indices, int f, std::unordered_map<int, int> &label_counts, int
+                                                num_classes) const;
     static int compute_majority_class(const std::unordered_map<int, int> &counts);
     static int compute_error(const std::unordered_map<int, int> &counts, const std::vector<int> &y_test);
 
@@ -41,7 +42,7 @@ class DecisionTreeClassifier {
 
     static double entropy(const std::vector<int> &counts, int total);
 
-    double get_impurity(const std::vector<int> &counts, int total) const;
+    [[nodiscard]] double get_impurity(const std::vector<int> &counts, int total) const;
 
     std::vector<int> sample_features(int total_features, int n_features);
 

@@ -9,7 +9,6 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
 
 add_executable(dicision_tree main.cpp
         src/Dataset.cpp
-        include/csv.hpp
         include/tabulate.hpp
         src/RandomForestClassifier.cpp
         include/RandomForestClassifier.h
@@ -17,7 +16,6 @@ add_executable(dicision_tree main.cpp
         include/DecisionTreeClassifier.h
         include/Timer.h
         include/pdqsort.h
-        include/RadixSort.h
         src/Timer.cpp
-        include/RadixSort.h
+        include/radix_sort_indices.h
 )

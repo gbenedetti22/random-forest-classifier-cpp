@@ -14,13 +14,13 @@
 
 class Timer {
 public:
-    void start(const std::string &name) {
+    void start(const std::string_view &name) {
         start_times_[name] = std::chrono::steady_clock::now();
     }
 
-    void stop(const std::string &name) {
+    void stop(const std::string_view &name) {
         if (!start_times_.contains(name)) {
-            throw std::runtime_error("Stop chiamato senza start per il timer: " + name);
+            throw std::runtime_error("Stop chiamato senza start per il timer: " + std::string(name));
         }
 
         const auto end_time = std::chrono::steady_clock::now();
@@ -106,10 +106,10 @@ public:
     }
 
 private:
-    std::unordered_map<std::string, std::chrono::steady_clock::time_point> start_times_;
-    std::unordered_map<std::string, double> durations_; // Tempo totale accumulato
-    std::unordered_map<std::string, int> counts_; // Numero di chiamate
-    std::unordered_map<std::string, double> max_durations_; // Nuovo: tempo massimo singolo
+    std::unordered_map<std::string_view, std::chrono::steady_clock::time_point> start_times_;
+    std::unordered_map<std::string_view, double> durations_; // Tempo totale accumulato
+    std::unordered_map<std::string_view, int> counts_; // Numero di chiamate
+    std::unordered_map<std::string_view, double> max_durations_; // Nuovo: tempo massimo singolo
 };
 
 // Dichiarazione del timer globale

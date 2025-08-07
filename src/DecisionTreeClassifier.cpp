@@ -14,13 +14,13 @@
 #include <ranges>
 #include <stack>
 #include <tuple>
-#include "../include/pdqsort.h"
-#include "../include/RadixSort.h"
 #include "../include/Timer.h"
+#include "../include/pdqsort.h"
+#include "../include/radix_sort_indices.h"
 
 using namespace std;
 
-void DecisionTreeClassifier::train(const vector<vector<double> > &X, const vector<int> &y, vector<int>& samples) {
+void DecisionTreeClassifier::train(const vector<vector<double> > &X, const vector<int> &y, vector<int> &samples) {
     build_tree(X, y, samples);
 }
 
@@ -34,31 +34,61 @@ int DecisionTreeClassifier::predict(const vector<double> &x) const {
     }
     return node->predicted_class;
 }
-int skipped_cycles = 0, total_cycles = 0;
 
-void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const vector<int> &y, vector<int>& samples) {
+auto split_left_right_old(const vector<vector<double> > &X,
+                          const vector<int> &indices,
+                          const double th,
+                          const int f) -> SplitResult {
+    vector<int> left_indices, right_indices;
+
+    left_indices.reserve(indices.size());
+    right_indices.reserve(indices.size());
+
+    for (int idx: indices) {
+        if (X[f][idx] < th) {
+            left_indices.push_back(idx);
+        } else {
+            right_indices.push_back(idx);
+        }
+    }
+
+    return std::move(tuple{left_indices, right_indices});
+}
+
+void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const vector<int> &y, vector<int> &samples) {
     root = new TreeNode();
 
-    const int total_features = X.size();
+    const int total_features = static_cast<int>(X.size());
     unordered_map<string, int> op_value = {{"sqrt", sqrt(total_features)}, {"log2", log2(total_features)}};
 
     stack<tuple<vector<int>, TreeNode *> > stack;
     stack.emplace(samples, root);
+
+    int n_features = 0;
+    if (std::holds_alternative<int>(max_features)) {
+        n_features = std::get<int>(max_features);
+    } else if (std::holds_alternative<string>(max_features)) {
+        const auto op = std::get<string>(max_features);
+        n_features = op_value[op];
+    }
 
     while (!stack.empty()) {
         auto [indices, node] = std::move(stack.top());
         stack.pop();
 
         int best_feature = -1;
+        int num_classes = 1;
         double best_threshold = 0.0;
         double best_error = numeric_limits<int>::max();
         vector<int> best_left_X, best_right_X;
 
         timer.start("label counts");
         unordered_map<int, int> label_counts;
-        // for (const auto &label: data_y) label_counts[label]++;
-        for (const int i : indices) {
+        for (const int i: indices) {
             label_counts[y[i]]++;
+            if (y[i] > num_classes) {
+                num_classes = y[i];
+            }
         }
         timer.stop("label counts");
 
@@ -68,28 +98,24 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
             continue;
         }
 
-        int n_features = 0;
-        if (std::holds_alternative<int>(max_features)) {
-            n_features = std::get<int>(max_features);
-        } else if (std::holds_alternative<string>(max_features)) {
-            auto op = std::get<string>(max_features);
-            n_features = op_value[op];
-        }
-
         assert(n_features > 0 && "Invalid max_feature parameter");
-        timer.start("sample features");
         vector<int> selected_features = sample_features(total_features, n_features);
-        timer.stop("sample features");
 
-        for (const int f: selected_features) {
-            auto [threshold, impurity] = compute_threshold(X, y, indices, f);
+        for (int f : selected_features) {
+
+            timer.start("threshold");
+            auto [threshold, impurity] = compute_threshold(X, y, indices, f, label_counts, num_classes);
+            timer.stop("threshold");
 
             if (impurity < best_error) {
                 timer.start("split");
                 auto [left_X, right_X] = split_left_right(X, indices, threshold, f);
                 timer.stop("split");
 
-                if (!left_X.empty() && !right_X.empty()) {
+                const float ratio = static_cast<float>(min(left_X.size(), right_X.size())) /
+                                    static_cast<float>(indices.size());
+
+                if (ratio > 0.2f) {
                     best_error = impurity;
                     best_feature = f;
                     best_threshold = threshold;
@@ -118,23 +144,12 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
         stack.emplace(move(best_left_X), left_node);
         stack.emplace(move(best_right_X), right_node);
     }
-
-    std::ios_base::fmtflags oldFlags = std::cout.flags();
-    std::streamsize oldPrecision = std::cout.precision();
-
-    const double perc = (total_cycles - skipped_cycles) / static_cast<double>(total_cycles) * 100;
-    cout << "Percentage of completed cycles during threshold: " << fixed << setprecision(3) << perc  << "%" << endl;
-    cout << "Skipped Cycles: " << skipped_cycles << " over " << total_cycles << endl;
-
-    std::cout.flags(oldFlags);
-    std::cout.precision(oldPrecision);
 }
 
 auto DecisionTreeClassifier::split_left_right(const vector<vector<double> > &X,
                                               const vector<int> &indices,
                                               const double th,
                                               const int f) -> SplitResult {
-
     const auto it = ranges::partition_point(indices, [&X, th, f](const int i) {
         return X[f][i] < th;
     });
@@ -142,90 +157,101 @@ auto DecisionTreeClassifier::split_left_right(const vector<vector<double> > &X,
     vector left_indices(indices.begin(), it);
     vector right_indices(it, indices.end());
 
-    return make_tuple(left_indices, right_indices);
+    return std::move(tuple{left_indices, right_indices});
 }
 
-pair<double, double> DecisionTreeClassifier::compute_threshold(const vector<vector<double>> &X, const vector<int> &y,
-                                                              vector<int> &indices, const int f) const {
+pair<double, double> DecisionTreeClassifier::compute_threshold(const vector<vector<double> > &X, const vector<int> &y,
+                                                               vector<int> &indices, const int f,
+                                                               unordered_map<int, int> &label_counts,
+                                                               const int num_classes) const {
+    // pdqsort(indices.begin(), indices.end(),
+    //                [&X, f](const int a, const int b) {
+    //                    return X[f][a] < X[f][b];
+    //                });
 
-    int num_classes = 1;
-    for (const int i : indices) {
-        if (y[i] > num_classes) {
-            num_classes = y[i];
-        }
-    }
 
     timer.start("treshold: sorting");
-
-    if (indices.size() > 1000) {
-        RadixSort::sortIndices(X[f], indices);
-    }else {
-        pdqsort_branchless(indices.begin(), indices.end(),
-                  [&X, f](const int a, const int b) {
-                      return X[f][a] < X[f][b];
-                  });
-    }
-
+    RADIX_SORT_INDICES(indices, X, f);
     timer.stop("treshold: sorting");
+
 
     double best_threshold = 0.0;
     double best_impurity = numeric_limits<double>::max();
+    double prev_impurity = numeric_limits<double>::max();
+    double impurity_tol = 1e-4;
 
     vector<int> left_counts, right_counts;
     left_counts.resize(num_classes);
     right_counts.resize(num_classes);
 
-    for (const int idx : indices) {
-        right_counts[y[idx]]++;
+    timer.start("threshold: label counts");
+    for (auto &[label, count]: label_counts) {
+        right_counts[label] = count;
     }
+    timer.stop("threshold: label counts");
 
     int left_total = 0;
     int right_total = static_cast<int>(indices.size());
+    int offset = 1;
 
     timer.start("treshold: main");
-    for (int i = 0; i < indices.size() - 1; ++i) {
+    for (int i = 0; i < indices.size() - 1; i += offset) {
+        i = min(i, static_cast<int>(indices.size() - 1));
+
+        for (int j = max(0, i - offset + 1); j <= i; ++j) {
+            const int current_idx = indices[j];
+            const int current_label = y[current_idx];
+
+            left_counts[current_label]++;
+            right_counts[current_label]--;
+            left_total++;
+            right_total--;
+        }
+
         const int current_idx = indices[i];
         const int next_idx = indices[i + 1];
 
         const double current_val = X[f][current_idx];
         const double next_val = X[f][next_idx];
-        const int current_label = y[current_idx];
 
-        total_cycles++;
+        if (current_val == next_val) continue;
 
-        left_counts[current_label]++;
-        right_counts[current_label]--;
-        left_total++;
-        right_total--;
-
-        if (current_val == next_val) {
-            skipped_cycles++;
-            continue;
-        }
-
-        const double threshold = (current_val + next_val) / 2.0;
+        const double threshold = (current_val + next_val) * 0.5;
 
         const double gini_left = get_impurity(left_counts, left_total);
         const double gini_right = get_impurity(right_counts, right_total);
-        const double weighted_impurity = (left_total * gini_left + right_total * gini_right) /
-                                         (left_total + right_total);
+
+        const double inv_total = 1.0 / (left_total + right_total);
+        const double weighted_impurity = (left_total * gini_left + right_total * gini_right) * inv_total;
 
         if (weighted_impurity < best_impurity) {
             best_impurity = weighted_impurity;
             best_threshold = threshold;
         }
+
+        const double impurity_delta = abs(weighted_impurity - prev_impurity);
+
+        if (impurity_delta < impurity_tol) {
+            offset *= 2;
+        } else if (impurity_delta > 0.05) {
+            offset = max(offset / 2, 1);
+        }
+
+        prev_impurity = weighted_impurity;
     }
+
     timer.stop("treshold: main");
 
-    return {best_threshold, best_impurity};
+    return std::move(pair{best_threshold, best_impurity});
 }
 
 double DecisionTreeClassifier::gini(const vector<int> &counts, const int total) {
     if (total == 0) return 0.0;
+    const double inv_total = 1.0 / total;
 
     double gini = 1.0;
-    for (const int count : counts) {
-        const double p = static_cast<double>(count) / total;
+    for (const int count: counts) {
+        const double p = static_cast<double>(count) * inv_total;
         gini -= p * p;
     }
     return gini;
@@ -281,13 +307,4 @@ int DecisionTreeClassifier::compute_majority_class(const unordered_map<int, int>
     }
     timer.stop("majority");
     return majority_class;
-}
-
-int DecisionTreeClassifier::compute_error(const unordered_map<int, int> &counts, const vector<int> &y_test) {
-    if (y_test.empty()) return 0;
-    const int majority = compute_majority_class(counts);
-    int error = 0;
-    for (const auto &label: y_test)
-        if (label != majority) error++;
-    return error;
 }

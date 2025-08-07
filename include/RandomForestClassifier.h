@@ -25,8 +25,6 @@ public:
         trees.reserve(params.n_trees);
     }
 
-    void subsample(int n_total_samples, double fraction, std::vector<int> &indices) const;
-
     void fit(std::vector<std::vector<double>> &X, const std::vector<int> &y);
 
     [[nodiscard]] int predict(const std::vector<double> &x) const;

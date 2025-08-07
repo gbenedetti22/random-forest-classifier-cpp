@@ -11,87 +11,133 @@
 #include <fstream>
 #include <iostream>
 #include <random>
+#include <ranges>
 #include <tuple>
-#include "../include/csv.hpp"
 #include <unordered_map>
+#include <sys/mman.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #include "../include/Timer.h"
 using namespace std;
+namespace fs = std::filesystem;
 
 Dataset::Dataset() = default;
 
-pair<vector<vector<double> >, vector<int> > Dataset::load_classification(const string &filename, const int max_samples) {
-    if (filename == "iris") {
-        return load_iris("../dataset/iris.data");
-    }
+void Dataset::process_line(vector<vector<double>>& X, vector<int>& y, const string& dataset_name, const std::string& line, unordered_map<std::string, int>& labels, int &label_id) {
+    if (dataset_name == "iris.data") {
+        if (line.empty()) return;
 
-    if (filename == "susy") {
-        return load_susy("../dataset/SUSY.csv", max_samples);
-    }
+        vector<string> tokens = split(line);
+        const string label = tokens.back();
+        tokens.pop_back();
 
-    cerr << "Dataset not found: " << filename << endl;
-    exit(1);
+        vector<double> features;
+        for (string &token: tokens) {
+            features.push_back(stod(token));
+        }
+
+        if (!labels.contains(label)) {
+            labels[label] = label_id++;
+        }
+
+        X.push_back(features);
+        y.push_back(labels[label]);
+    }else if (dataset_name == "SUSY.csv") {
+        if (line.empty()) return;
+
+        size_t start = 0;
+        size_t end = line.find(',');
+
+        int label;
+        std::from_chars(line.data() + start, line.data() + end, label);
+        y.push_back(label);
+
+        vector<double> features;
+        features.reserve(18);
+
+        while (end != std::string::npos) {
+            start = end + 1;
+            end = line.find(',', start);
+            double val;
+            std::from_chars(line.data() + start, line.data() + (end == std::string::npos ? line.size() : end), val);
+            features.push_back(val);
+        }
+
+        X.push_back(std::move(features));
+    }
 }
 
-pair<vector<vector<double> >, vector<int> > Dataset::load(
-    const string &filename,
-    const string &directory,
-    size_t max_samples,
-    const pair<size_t, size_t> &shape
-) {
-    string path = filesystem::path(directory) / filename;
-
-    csv::CSVFormat format;
-    format.variable_columns();
-
-    csv::CSVReader reader(path, format);
-
-    vector<vector<double> > features;
-    vector<int> labels;
-    unordered_map<string, int> label_map;
-    int label_counter = 0;
-
-    size_t sample_count = 0;
-
-    for (csv::CSVRow &row: reader) {
-        if (sample_count >= max_samples) break;
-
-        size_t total_cols = row.size();
-        size_t feature_end = (shape.second == static_cast<size_t>(-1)) ? total_cols - 1 : shape.second;
-        size_t feature_start = shape.first;
-
-        if (total_cols <= feature_end) continue; // Riga malformata
-
-        try {
-            vector<double> feature_row;
-            // Carica feature
-            for (size_t i = feature_start; i < feature_end; ++i) {
-                feature_row.push_back(row[i].get<double>());
-            }
-
-            // Carica label
-            int label_int;
-
-            try {
-                // Prova a convertirla direttamente in int
-                label_int = row[feature_end].get<int>();
-            } catch (...) {
-                // Se fallisce, interpreta come stringa e mappa
-                string label_str = row[feature_end].get<>();
-                if (!label_map.contains(label_str)) {
-                    label_map[label_str] = label_counter++;
-                }
-                label_int = label_map[label_str];
-            }
-
-            features.push_back(feature_row);
-            labels.push_back(label_int);
-            ++sample_count;
-        } catch (...) {
+pair<vector<vector<double> >, vector<int>> Dataset::load(std::string filename,
+                              const std::string& directory,
+                              const size_t max_lines) {
+    if (!filename.contains(".")) {
+        if (filename == "iris") {
+            filename = "iris.data";
+        }else if (filename == "susy") {
+            filename = "SUSY.csv";
         }
     }
 
-    return {features, labels};
+    if (filename != "iris.data" && filename != "SUSY.csv") {
+        cerr << "Error: File name not correctly read." << endl;
+        exit(1);
+    }
+
+    const fs::path filepath = fs::path(directory) / filename;
+
+    const int fd = open(filepath.c_str(), O_RDONLY);
+    if (fd < 0) {
+        perror("Errore apertura file");
+        return {};
+    }
+
+    struct stat sb{};
+    if (fstat(fd, &sb) == -1) {
+        perror("Errore stat");
+        close(fd);
+        return {};
+    }
+
+    if (sb.st_size == 0) {
+        std::cerr << "File vuoto\n";
+        close(fd);
+        return {};
+    }
+
+    const size_t filesize = sb.st_size;
+
+    // Memory mapping del file
+    void* file_data = mmap(nullptr, filesize, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (file_data == MAP_FAILED) {
+        perror("Errore mmap");
+        close(fd);
+        return {};
+    }
+
+    const char* data = static_cast<char*>(file_data);
+    size_t line_start = 0;
+    size_t line_count = 0;
+
+    vector<vector<double>> features;
+    vector<int> labels;
+    unordered_map<string, int> labels_mapping;
+    int label_id;
+
+    for (size_t i = 0; i < filesize && line_count < max_lines; ++i) {
+        if (data[i] == '\n' || i == filesize - 1) {
+            const size_t line_end = data[i] == '\n' ? i : i + 1;
+            string line(data + line_start, line_end - line_start);
+            process_line(features, labels, filename, line, labels_mapping, label_id);
+
+            ++line_count;
+            line_start = i + 1;
+        }
+    }
+
+    munmap(file_data, filesize);
+    close(fd);
+    return make_pair(features, labels);
 }
 
 tuple<vector<vector<double> >, vector<int>, vector<vector<double> >, vector<int> >
@@ -131,7 +177,7 @@ Dataset::train_test_split(vector<vector<double> > &X,
         random_device rd;
         mt19937 gen(rd());
 
-        for (auto &[label, indices]: class_indices) {
+        for (auto &indices: class_indices | views::values) {
             ranges::shuffle(indices, gen);
             const int train_count = static_cast<int>(indices.size() * train_perc);
 
@@ -161,83 +207,9 @@ vector<string> Dataset::split(const string &s, const char delim) {
     return tokens;
 }
 
-pair<vector<vector<double> >, vector<int> > Dataset::load_iris(const string &filename) {
-    ifstream file(filename);
-    if (!file) {
-        cerr << "Could not open file " << filename << endl;
-        cout << "Current directory: " << filesystem::current_path() << endl;
-        exit(1);
-    }
-
-    vector<vector<double> > X;
-    vector<int> y;
-    unordered_map<string, int> labels;
-    int label_id = 0;
-
-    string line;
-    while (getline(file, line)) {
-        if (line.empty()) continue;
-
-        vector<string> tokens = split(line);
-        string label = tokens.back();
-        tokens.pop_back();
-
-        vector<double> features;
-        for (string &token: tokens) {
-            features.push_back(stod(token));
-        }
-
-        if (!labels.contains(label)) {
-            labels[label] = label_id++;
-        }
-
-        X.push_back(features);
-        y.push_back(labels[label]);
-    }
-
-    file.close();
-    return {X, y};
-}
-
-pair<vector<vector<double> >, vector<int> > Dataset::load_susy(const string &filename, int max_samples) {
-    ifstream file(filename);
-    if (!file) {
-        cerr << "Could not open file " << filename << endl;
-        cout << "Current directory: " << filesystem::current_path() << endl;
-        exit(1);
-    }
-
-    vector<vector<double> > X;
-    vector<int> y;
-
-    string line;
-    int row = 0;
-    while (getline(file, line)) {
-        if (line.empty()) continue;
-        row++;
-
-        if (row > max_samples && max_samples > 0) break;
-
-        vector<string> tokens = split(line);
-        string label = tokens.front();
-        tokens.erase(tokens.begin());
-
-        vector<double> features;
-        for (string &token: tokens) {
-            features.push_back(stod(token));
-        }
-
-        X.push_back(features);
-        y.push_back(stoi(label));
-    }
-
-    file.close();
-    return {X, y};
-}
-
 void Dataset::shuffle_data(vector<vector<double> > &X, vector<int> &y) {
     for (int i = y.size() - 1; i >= 0; i--) {
-        int j = rand() % (i + 1);
+        const int j = rand() % (i + 1);
         swap(X[i], X[j]);
         swap(y[i], y[j]);
     }
