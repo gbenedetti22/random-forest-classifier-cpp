@@ -25,11 +25,11 @@ public:
         trees.reserve(params.n_trees);
     }
 
-    void fit(std::vector<std::vector<double>> &X, const std::vector<int> &y);
+    void fit(std::vector<std::vector<float>> &X, const std::vector<int> &y);
 
-    [[nodiscard]] int predict(const std::vector<double> &x) const;
+    [[nodiscard]] int predict(const std::vector<float> &x) const;
 
-    [[nodiscard]] double evaluate(const std::vector<std::vector<double> > &X, const std::vector<int> &y) const;
+    [[nodiscard]] float evaluate(const std::vector<std::vector<float> > &X, const std::vector<int> &y) const;
 
 private:
     RandomForestParams params;

@@ -10,9 +10,10 @@
 
 #include "indicators.hpp"
 #include "../include/Timer.h"
+#include "../include/BS_thread_pool.hpp"
 using namespace std;
 
-void transpose(vector<vector<double> > &matrix) {
+void transpose(vector<vector<float> > &matrix) {
     const int m = static_cast<int>(matrix.size());
     const int n = static_cast<int>(matrix[0].size());
 
@@ -25,7 +26,7 @@ void transpose(vector<vector<double> > &matrix) {
         return;
     }
 
-    vector<double> flat(m * n);
+    vector<float> flat(m * n);
 
     for (int i = 0; i < m; i++) {
         for (int j = 0; j < n; j++) {
@@ -39,7 +40,7 @@ void transpose(vector<vector<double> > &matrix) {
         if (visited[start]) continue;
 
         int current = start;
-        double temp = flat[current];
+        float temp = flat[current];
 
         do {
             visited[current] = true;
@@ -49,7 +50,7 @@ void transpose(vector<vector<double> > &matrix) {
 
             const int next = col * m + row;
 
-            const double nextTemp = flat[next];
+            const float nextTemp = flat[next];
             flat[next] = temp;
             temp = nextTemp;
 
@@ -69,19 +70,24 @@ void transpose(vector<vector<double> > &matrix) {
     }
 }
 
-void RandomForestClassifier::fit(vector<vector<double>> &X, const vector<int> &y) {
+void RandomForestClassifier::fit(vector<vector<float> > &X, const vector<int> &y) {
     if (X.empty() || y.empty()) {
         cerr << "Cannot build the tree on dataset" << endl;
         return;
     }
     const int num_trees = trees.capacity();
     timer.start("transpose");
+    cout << "Transposing.." << endl;
     transpose(X);
     timer.stop("transpose");
-    trees.reserve(num_trees);
+    timer.set_active(false);
 
+    trees.reserve(num_trees);
     for (int i = 0; i < num_trees; i++) {
-        DecisionTreeClassifier tree(params.split_criteria, params.min_samples_split, params.max_features, params.random_seed);
+        cout << "Training tree n. " << i + 1 << endl;
+
+        DecisionTreeClassifier tree(params.split_criteria, params.min_samples_split, params.max_features,
+                                    params.random_seed);
 
         if (params.bootstrap) {
             vector<int> indices;
@@ -100,14 +106,14 @@ void RandomForestClassifier::fit(vector<vector<double>> &X, const vector<int> &y
     }
 }
 
-int RandomForestClassifier::predict(const vector<double> &x) const {
+int RandomForestClassifier::predict(const vector<float> &x) const {
     unordered_map<int, int> vote_counts;
-    for (const auto &tree : trees) {
+    for (const auto &tree: trees) {
         int pred = tree.predict(x);
         vote_counts[pred]++;
     }
     int majority_class = -1, max_votes = -1;
-    for (const auto &[label, count] : vote_counts) {
+    for (const auto &[label, count]: vote_counts) {
         if (count > max_votes) {
             max_votes = count;
             majority_class = label;
@@ -116,7 +122,7 @@ int RandomForestClassifier::predict(const vector<double> &x) const {
     return majority_class;
 }
 
-double RandomForestClassifier::evaluate(const vector<vector<double>> &X, const vector<int> &y) const {
+float RandomForestClassifier::evaluate(const vector<vector<float> > &X, const vector<int> &y) const {
     int classified = 0;
     for (size_t i = 0; i < X.size(); ++i) {
         if (predict(X[i]) == y[i]) {
@@ -124,7 +130,7 @@ double RandomForestClassifier::evaluate(const vector<vector<double>> &X, const v
         }
     }
 
-    return static_cast<double>(classified) / X.size();
+    return static_cast<float>(classified) / X.size();
 }
 
 void RandomForestClassifier::bootstrap_sample(const int n_samples, vector<int> &indices) const {

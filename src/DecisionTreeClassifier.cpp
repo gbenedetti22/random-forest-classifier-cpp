@@ -20,11 +20,11 @@
 
 using namespace std;
 
-void DecisionTreeClassifier::train(const vector<vector<double> > &X, const vector<int> &y, vector<int> &samples) {
+void DecisionTreeClassifier::train(const vector<vector<float> > &X, const vector<int> &y, vector<int> &samples) {
     build_tree(X, y, samples);
 }
 
-int DecisionTreeClassifier::predict(const vector<double> &x) const {
+int DecisionTreeClassifier::predict(const vector<float> &x) const {
     const TreeNode *node = root;
     while (!node->is_leaf) {
         if (x[node->feature_index] < node->threshold)
@@ -35,7 +35,7 @@ int DecisionTreeClassifier::predict(const vector<double> &x) const {
     return node->predicted_class;
 }
 
-void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const vector<int> &y, vector<int> &samples) {
+void DecisionTreeClassifier::build_tree(const vector<vector<float> > &X, const vector<int> &y, vector<int> &samples) {
     root = new TreeNode();
 
     const int total_features = static_cast<int>(X.size());
@@ -58,8 +58,8 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
 
         int best_feature = -1;
         int num_classes = 1;
-        double best_threshold = 0.0;
-        double best_error = numeric_limits<int>::max();
+        float best_threshold = 0.0;
+        float best_error = numeric_limits<float>::max();
         vector<int> best_left_X, best_right_X;
 
         timer.start("label counts");
@@ -81,8 +81,7 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
         assert(n_features > 0 && "Invalid max_feature parameter");
         vector<int> selected_features = sample_features(total_features, n_features);
 
-        for (int f : selected_features) {
-
+        for (const int f: selected_features) {
             timer.start("threshold");
             auto [threshold, impurity] = compute_threshold(X, y, indices, f, label_counts, num_classes);
             timer.stop("threshold");
@@ -95,6 +94,7 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
                 const float ratio = static_cast<float>(min(left_X.size(), right_X.size())) /
                                     static_cast<float>(indices.size());
 
+                // ratio = min_samples_leaf (scikit learn)
                 if (ratio > 0.2f) {
                     best_error = impurity;
                     best_feature = f;
@@ -126,9 +126,9 @@ void DecisionTreeClassifier::build_tree(const vector<vector<double> > &X, const 
     }
 }
 
-auto DecisionTreeClassifier::split_left_right(const vector<vector<double> > &X,
+auto DecisionTreeClassifier::split_left_right(const vector<vector<float> > &X,
                                               const vector<int> &indices,
-                                              const double th,
+                                              const float th,
                                               const int f) -> SplitResult {
     const auto it = ranges::partition_point(indices, [&X, th, f](const int i) {
         return X[f][i] < th;
@@ -140,10 +140,10 @@ auto DecisionTreeClassifier::split_left_right(const vector<vector<double> > &X,
     return std::move(tuple{left_indices, right_indices});
 }
 
-pair<double, double> DecisionTreeClassifier::compute_threshold(const vector<vector<double> > &X, const vector<int> &y,
-                                                               vector<int> &indices, const int f,
-                                                               unordered_map<int, int> &label_counts,
-                                                               const int num_classes) const {
+pair<float, float> DecisionTreeClassifier::compute_threshold(const vector<vector<float> > &X, const vector<int> &y,
+                                                             vector<int> &indices, const int f,
+                                                             unordered_map<int, int> &label_counts,
+                                                             const int num_classes) const {
     // pdqsort(indices.begin(), indices.end(),
     //                [&X, f](const int a, const int b) {
     //                    return X[f][a] < X[f][b];
@@ -155,10 +155,10 @@ pair<double, double> DecisionTreeClassifier::compute_threshold(const vector<vect
     timer.stop("treshold: sorting");
 
 
-    double best_threshold = 0.0;
-    double best_impurity = numeric_limits<double>::max();
-    double prev_impurity = numeric_limits<double>::max();
-    double impurity_tol = 1e-4;
+    float best_threshold = 0.0;
+    float best_impurity = numeric_limits<float>::max();
+    float prev_impurity = numeric_limits<float>::max();
+    float impurity_tol = 1e-4;
 
     vector<int> left_counts, right_counts;
     left_counts.resize(num_classes);
@@ -191,25 +191,27 @@ pair<double, double> DecisionTreeClassifier::compute_threshold(const vector<vect
         const int current_idx = indices[i];
         const int next_idx = indices[i + 1];
 
-        const double current_val = X[f][current_idx];
-        const double next_val = X[f][next_idx];
+        const float current_val = X[f][current_idx];
+        const float next_val = X[f][next_idx];
 
         if (current_val == next_val) continue;
 
-        const double threshold = (current_val + next_val) * 0.5;
+        const float threshold = (current_val + next_val) * 0.5f;
 
-        const double gini_left = get_impurity(left_counts, left_total);
-        const double gini_right = get_impurity(right_counts, right_total);
+        const float gini_left = get_impurity(left_counts, left_total);
+        const float gini_right = get_impurity(right_counts, right_total);
 
-        const double inv_total = 1.0 / (left_total + right_total);
-        const double weighted_impurity = (left_total * gini_left + right_total * gini_right) * inv_total;
+        const float inv_total = 1.0f / static_cast<float>(left_total + right_total);
+        const float weighted_impurity =
+        (static_cast<float>(left_total) * gini_left +
+         static_cast<float>(right_total) * gini_right) * inv_total;
 
         if (weighted_impurity < best_impurity) {
             best_impurity = weighted_impurity;
             best_threshold = threshold;
         }
 
-        const double impurity_delta = abs(weighted_impurity - prev_impurity);
+        const float impurity_delta = abs(weighted_impurity - prev_impurity);
 
         if (impurity_delta < impurity_tol) {
             offset *= 2;
@@ -225,22 +227,24 @@ pair<double, double> DecisionTreeClassifier::compute_threshold(const vector<vect
     return std::move(pair{best_threshold, best_impurity});
 }
 
-double DecisionTreeClassifier::gini(const vector<int> &counts, const int total) {
+float DecisionTreeClassifier::gini(const vector<int> &counts, const int total) {
     if (total == 0) return 0.0;
-    const double inv_total = 1.0 / total;
+    const float inv_total = 1.0f / static_cast<float>(total);
 
-    double gini = 1.0;
+    float gini = 1.0;
     for (const int count: counts) {
-        const double p = static_cast<double>(count) * inv_total;
+        const float p = static_cast<float>(count) * inv_total;
         gini -= p * p;
     }
     return gini;
 }
 
-double DecisionTreeClassifier::entropy(const vector<int> &counts, const int total) {
-    double entropy = 0.0;
+float DecisionTreeClassifier::entropy(const vector<int> &counts, const int total) {
+    float entropy = 0.0;
+    const float inv_total = 1.0f / static_cast<float>(total);
+
     for (const int count: counts) {
-        const double prob = static_cast<double>(count) / total;
+        const float prob = static_cast<float>(count) * inv_total;
         if (prob > 0) {
             entropy -= prob * std::log2(prob);
         }
@@ -249,7 +253,7 @@ double DecisionTreeClassifier::entropy(const vector<int> &counts, const int tota
 }
 
 
-double DecisionTreeClassifier::get_impurity(const vector<int> &counts, const int total) const {
+float DecisionTreeClassifier::get_impurity(const vector<int> &counts, const int total) const {
     if (split_criteria == "gini") {
         return gini(counts, total);
     }

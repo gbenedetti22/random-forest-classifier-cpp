@@ -15,10 +15,14 @@
 class Timer {
 public:
     void start(const std::string_view &name) {
+        if (!active) return;
+
         start_times_[name] = std::chrono::steady_clock::now();
     }
 
     void stop(const std::string_view &name) {
+        if (!active) return;
+
         if (!start_times_.contains(name)) {
             throw std::runtime_error("Stop chiamato senza start per il timer: " + std::string(name));
         }
@@ -39,6 +43,8 @@ public:
     }
 
     void summary() const {
+        if (!active) return;
+
         using namespace tabulate;
 
         Table table;
@@ -98,6 +104,10 @@ public:
         std::cout << table << std::endl;
     }
 
+    void set_active(const bool active) {
+        Timer::active = active;
+    }
+
     void reset() {
         start_times_.clear();
         durations_.clear();
@@ -106,10 +116,11 @@ public:
     }
 
 private:
+    bool active = true;
     std::unordered_map<std::string_view, std::chrono::steady_clock::time_point> start_times_;
-    std::unordered_map<std::string_view, double> durations_; // Tempo totale accumulato
-    std::unordered_map<std::string_view, int> counts_; // Numero di chiamate
-    std::unordered_map<std::string_view, double> max_durations_; // Nuovo: tempo massimo singolo
+    std::unordered_map<std::string_view, double> durations_;
+    std::unordered_map<std::string_view, int> counts_;
+    std::unordered_map<std::string_view, double> max_durations_;
 };
 
 // Dichiarazione del timer globale

@@ -17,7 +17,7 @@ struct TreeNode {
     bool is_leaf;
     int predicted_class;
     int feature_index;
-    double threshold;
+    float threshold;
     TreeNode* left;
     TreeNode* right;
 
@@ -29,20 +29,20 @@ class DecisionTreeClassifier {
     TreeNode* root;
     std::mt19937 rng;
 
-    void build_tree(const std::vector<std::vector<double>> &X, const std::vector<int> &y, std::vector<int> &samples);
+    void build_tree(const std::vector<std::vector<float>> &X, const std::vector<int> &y, std::vector<int> &samples);
 
-    static auto split_left_right(const std::vector<std::vector<double>> &X, const std::vector<int> &indices, double th, int f)->SplitResult;
-    std::pair<double, double> compute_threshold(const std::vector<std::vector<double>> &X,
+    static auto split_left_right(const std::vector<std::vector<float>> &X, const std::vector<int> &indices, float th, int f)->SplitResult;
+    std::pair<float, float> compute_threshold(const std::vector<std::vector<float>> &X,
                                                 const std::vector<int> &y, std::vector<int> &indices, int f, std::unordered_map<int, int> &label_counts, int
                                                 num_classes) const;
     static int compute_majority_class(const std::unordered_map<int, int> &counts);
     static int compute_error(const std::unordered_map<int, int> &counts, const std::vector<int> &y_test);
 
-    static double gini(const std::vector<int> &counts, int total);
+    static float gini(const std::vector<int> &counts, int total);
 
-    static double entropy(const std::vector<int> &counts, int total);
+    static float entropy(const std::vector<int> &counts, int total);
 
-    [[nodiscard]] double get_impurity(const std::vector<int> &counts, int total) const;
+    [[nodiscard]] float get_impurity(const std::vector<int> &counts, int total) const;
 
     std::vector<int> sample_features(int total_features, int n_features);
 
@@ -63,8 +63,8 @@ DecisionTreeClassifier(const std::string &split_criteria, const int min_samples_
     }
     }
 
-    void train(const std::vector<std::vector<double>> &X, const std::vector<int> &y, std::vector<int> &samples);
-    int predict(const std::vector<double>& x) const;
+    void train(const std::vector<std::vector<float>> &X, const std::vector<int> &y, std::vector<int> &samples);
+    [[nodiscard]] int predict(const std::vector<float>& x) const;
 };
 
 

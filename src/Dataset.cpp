@@ -24,7 +24,7 @@ namespace fs = std::filesystem;
 
 Dataset::Dataset() = default;
 
-void Dataset::process_line(vector<vector<double>>& X, vector<int>& y, const string& dataset_name, const std::string& line, unordered_map<std::string, int>& labels, int &label_id) {
+void Dataset::process_line(vector<vector<float>>& X, vector<int>& y, const string& dataset_name, const std::string& line, unordered_map<std::string, int>& labels, int &label_id) {
     if (dataset_name == "iris.data") {
         if (line.empty()) return;
 
@@ -32,7 +32,7 @@ void Dataset::process_line(vector<vector<double>>& X, vector<int>& y, const stri
         const string label = tokens.back();
         tokens.pop_back();
 
-        vector<double> features;
+        vector<float> features;
         for (string &token: tokens) {
             features.push_back(stod(token));
         }
@@ -53,13 +53,13 @@ void Dataset::process_line(vector<vector<double>>& X, vector<int>& y, const stri
         std::from_chars(line.data() + start, line.data() + end, label);
         y.push_back(label);
 
-        vector<double> features;
+        vector<float> features;
         features.reserve(18);
 
         while (end != std::string::npos) {
             start = end + 1;
             end = line.find(',', start);
-            double val;
+            float val;
             std::from_chars(line.data() + start, line.data() + (end == std::string::npos ? line.size() : end), val);
             features.push_back(val);
         }
@@ -68,7 +68,7 @@ void Dataset::process_line(vector<vector<double>>& X, vector<int>& y, const stri
     }
 }
 
-pair<vector<vector<double> >, vector<int>> Dataset::load(std::string filename,
+pair<vector<vector<float> >, vector<int>> Dataset::load(std::string filename,
                               const std::string& directory,
                               const size_t max_lines) {
     if (!filename.contains(".")) {
@@ -119,7 +119,7 @@ pair<vector<vector<double> >, vector<int>> Dataset::load(std::string filename,
     size_t line_start = 0;
     size_t line_count = 0;
 
-    vector<vector<double>> features;
+    vector<vector<float>> features;
     vector<int> labels;
     unordered_map<string, int> labels_mapping;
     int label_id;
@@ -140,13 +140,13 @@ pair<vector<vector<double> >, vector<int>> Dataset::load(std::string filename,
     return make_pair(features, labels);
 }
 
-tuple<vector<vector<double> >, vector<int>, vector<vector<double> >, vector<int> >
-Dataset::train_test_split(vector<vector<double> > &X,
+tuple<vector<vector<float> >, vector<int>, vector<vector<float> >, vector<int> >
+Dataset::train_test_split(vector<vector<float> > &X,
                           vector<int> &y,
-                          const double train_perc, const bool stratified) {
+                          const float train_perc, const bool stratified) {
     const int n_samples = X.size();
 
-    vector<vector<double> > X_train, X_test;
+    vector<vector<float> > X_train, X_test;
     vector<int> y_train, y_test;
 
     if (!stratified) {
@@ -207,7 +207,7 @@ vector<string> Dataset::split(const string &s, const char delim) {
     return tokens;
 }
 
-void Dataset::shuffle_data(vector<vector<double> > &X, vector<int> &y) {
+void Dataset::shuffle_data(vector<vector<float> > &X, vector<int> &y) {
     for (int i = y.size() - 1; i >= 0; i--) {
         const int j = rand() % (i + 1);
         swap(X[i], X[j]);
