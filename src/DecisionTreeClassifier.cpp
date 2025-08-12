@@ -126,10 +126,10 @@ void DecisionTreeClassifier::build_tree(const vector<vector<float> > &X, const v
     }
 }
 
-auto DecisionTreeClassifier::split_left_right(const vector<vector<float> > &X,
+tuple<vector<int>, vector<int>> DecisionTreeClassifier::split_left_right(const vector<vector<float> > &X,
                                               const vector<int> &indices,
                                               const float th,
-                                              const int f) -> SplitResult {
+                                              const int f) {
     const auto it = ranges::partition_point(indices, [&X, th, f](const int i) {
         return X[f][i] < th;
     });
