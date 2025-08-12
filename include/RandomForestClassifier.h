@@ -29,7 +29,9 @@ public:
 
     [[nodiscard]] int predict(const std::vector<float> &x) const;
 
-    [[nodiscard]] float evaluate(const std::vector<std::vector<float> > &X, const std::vector<int> &y) const;
+    [[nodiscard]] std::pair<float, float> evaluate(const std::vector<std::vector<float> > &X, const std::vector<int> &y) const;
+
+    [[nodiscard]] static float f1_score(const std::vector<int> &y, const std::vector<int> &y_pred) ;
 
 private:
     RandomForestParams params;

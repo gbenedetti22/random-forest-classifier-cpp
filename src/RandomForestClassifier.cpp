@@ -70,7 +70,7 @@ void transpose(vector<vector<float> > &matrix) {
     }
 }
 
-void RandomForestClassifier::fit(vector<vector<float> > &X, const vector<int> &y) {
+void RandomForestClassifier::fit(vector<vector<float>> &X, const vector<int> &y) {
     if (X.empty() || y.empty()) {
         cerr << "Cannot build the tree on dataset" << endl;
         return;
@@ -80,7 +80,6 @@ void RandomForestClassifier::fit(vector<vector<float> > &X, const vector<int> &y
     cout << "Transposing.." << endl;
     transpose(X);
     timer.stop("transpose");
-    timer.set_active(false);
 
     trees.reserve(num_trees);
     for (int i = 0; i < num_trees; i++) {
@@ -122,25 +121,72 @@ int RandomForestClassifier::predict(const vector<float> &x) const {
     return majority_class;
 }
 
-float RandomForestClassifier::evaluate(const vector<vector<float> > &X, const vector<int> &y) const {
+pair<float, float> RandomForestClassifier::evaluate(const vector<vector<float> > &X, const vector<int> &y) const {
     int classified = 0;
-    for (size_t i = 0; i < X.size(); ++i) {
-        if (predict(X[i]) == y[i]) {
+    vector<int> y_pred;
+    y_pred.reserve(X.size());
+    for (int i = 0; i < X.size(); ++i) {
+        int prediction = predict(X[i]);
+        y_pred.push_back(prediction);
+
+        if (prediction == y[i]) {
             classified++;
         }
     }
 
-    return static_cast<float>(classified) / X.size();
+    return make_pair(static_cast<float>(classified) / X.size(), f1_score(y, y_pred));
 }
+
+float RandomForestClassifier::f1_score(const vector<int> &y, const vector<int> &y_pred) {
+    assert(y.size() == y_pred.size());
+
+    const int maxLabel = *ranges::max_element(y);
+    const int numClasses = maxLabel + 1;
+
+    vector TP(numClasses, 0);
+    vector FP(numClasses, 0);
+    vector FN(numClasses, 0);
+
+    for (int i = 0; i < y_pred.size(); ++i) {
+        const int pred = y_pred[i];
+        const int trueLabel = y[i];
+
+        if (pred == trueLabel) {
+            TP[trueLabel]++;
+        } else {
+            FP[pred]++;
+            FN[trueLabel]++;
+        }
+    }
+
+    double macro_f1 = 0.0;
+    for (int label = 0; label < numClasses; ++label) {
+        const double precision = TP[label] + FP[label] > 0
+            ? static_cast<double>(TP[label]) / (TP[label] + FP[label]) 
+            : 0.0;
+        const double recall = TP[label] + FN[label] > 0
+            ? static_cast<double>(TP[label]) / (TP[label] + FN[label]) 
+            : 0.0;
+
+        const double f1 = precision + recall > 0
+            ? 2.0 * precision * recall / (precision + recall) 
+            : 0.0;
+
+        macro_f1 += f1;
+    }
+
+    return static_cast<float>(macro_f1 / numClasses);
+}
+
 
 void RandomForestClassifier::bootstrap_sample(const int n_samples, vector<int> &indices) const {
     indices.clear();
     indices.reserve(n_samples);
 
     if (params.random_seed.has_value()) {
-        std::srand(params.random_seed.value());
+        srand(params.random_seed.value());
     }else {
-        std::srand(std::time(nullptr));
+        srand(time(nullptr));
     }
 
     for (size_t i = 0; i < n_samples; ++i) {

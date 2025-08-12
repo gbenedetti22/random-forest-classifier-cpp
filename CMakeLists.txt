@@ -1,6 +1,6 @@
-cmake_minimum_required(VERSION 3.31)
+cmake_minimum_required(VERSION 3.26.5)
 project(dicision_tree)
-set(CMAKE_CXX_STANDARD 26)
+set(CMAKE_CXX_STANDARD 23)
 
 include_directories(utils)
 

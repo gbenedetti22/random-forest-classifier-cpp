@@ -5,6 +5,7 @@
 #include "../include/Dataset.h"
 
 #include <algorithm>
+#include <charconv>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -20,11 +21,11 @@
 
 #include "../include/Timer.h"
 using namespace std;
-namespace fs = std::filesystem;
+namespace fs = filesystem;
 
 Dataset::Dataset() = default;
 
-void Dataset::process_line(vector<vector<float>>& X, vector<int>& y, const string& dataset_name, const std::string& line, unordered_map<std::string, int>& labels, int &label_id) {
+void Dataset::process_line(vector<vector<float>>& X, vector<int>& y, const string& dataset_name, const string& line, unordered_map<string, int>& labels, int &label_id) {
     if (dataset_name == "iris.data") {
         if (line.empty()) return;
 
@@ -50,26 +51,26 @@ void Dataset::process_line(vector<vector<float>>& X, vector<int>& y, const strin
         size_t end = line.find(',');
 
         int label;
-        std::from_chars(line.data() + start, line.data() + end, label);
+        from_chars(line.data() + start, line.data() + end, label);
         y.push_back(label);
 
         vector<float> features;
         features.reserve(18);
 
-        while (end != std::string::npos) {
+        while (end != string::npos) {
             start = end + 1;
             end = line.find(',', start);
             float val;
-            std::from_chars(line.data() + start, line.data() + (end == std::string::npos ? line.size() : end), val);
+            from_chars(line.data() + start, line.data() + (end == string::npos ? line.size() : end), val);
             features.push_back(val);
         }
 
-        X.push_back(std::move(features));
+        X.push_back(move(features));
     }
 }
 
-pair<vector<vector<float> >, vector<int>> Dataset::load(std::string filename,
-                              const std::string& directory,
+pair<vector<vector<float> >, vector<int>> Dataset::load(string filename,
+                              const string& directory,
                               const size_t max_lines) {
     if (!filename.contains(".")) {
         if (filename == "iris") {
@@ -88,21 +89,21 @@ pair<vector<vector<float> >, vector<int>> Dataset::load(std::string filename,
 
     const int fd = open(filepath.c_str(), O_RDONLY);
     if (fd < 0) {
-        perror("Errore apertura file");
-        return {};
+        perror("Error while opening file");
+        exit(1);
     }
 
     struct stat sb{};
     if (fstat(fd, &sb) == -1) {
         perror("Errore stat");
         close(fd);
-        return {};
+        exit(1);
     }
 
     if (sb.st_size == 0) {
-        std::cerr << "File vuoto\n";
+        cerr << "Empty file\n";
         close(fd);
-        return {};
+        exit(1);
     }
 
     const size_t filesize = sb.st_size;
