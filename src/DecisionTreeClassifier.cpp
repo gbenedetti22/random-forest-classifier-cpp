@@ -9,14 +9,16 @@
 #include <cmath>
 #include <iostream>
 #include <limits>
+#include <omp.h>
 #include <unordered_map>
 #include <random>
 #include <ranges>
 #include <stack>
 #include <tuple>
 #include "../include/Timer.h"
-#include "../include/pdqsort.h"
 #include "../include/radix_sort_indices.h"
+#include "../include/splitters/SplitterFF.hpp"
+#include "splitters/SequentialSplitter.hpp"
 
 using namespace std;
 
@@ -52,15 +54,37 @@ void DecisionTreeClassifier::build_tree(const vector<vector<float> > &X, const v
         n_features = op_value[op];
     }
 
+    auto compute_fn = [this](const vector<vector<float>> &X,
+                         const vector<int> &y,
+                         vector<int> &indices,
+                         const int f,
+                         const unordered_map<int,int> &label_counts,
+                         const int num_classes) -> pair<float,float> {
+        return this->compute_threshold(X, y, indices, f, label_counts, num_classes);
+    };
+
+    auto split_fn = [this](const vector<vector<float>> &X,
+                           const vector<int> &indices,
+                           const float th,
+                           const int f) -> tuple<vector<int>, vector<int>> {
+        return split_left_right(X, indices, th, f);
+    };
+
+    unique_ptr<BaseSplitter> splitter;
+    assert(nworkers > 0 || nworkers == -1);
+
+    if (nworkers == 1) {
+        splitter = make_unique<SequentialSplitter>(compute_fn, split_fn);
+    }else {
+        nworkers = nworkers == -1 ? omp_get_max_threads() : nworkers;
+        splitter = make_unique<SplitterFF>(compute_fn, split_fn, nworkers);
+    }
+
     while (!stack.empty()) {
         auto [indices, node] = std::move(stack.top());
         stack.pop();
 
-        int best_feature = -1;
         int num_classes = 1;
-        float best_threshold = 0.0;
-        float best_error = numeric_limits<float>::max();
-        vector<int> best_left_X, best_right_X;
 
         timer.start("label counts");
         unordered_map<int, int> label_counts;
@@ -81,30 +105,15 @@ void DecisionTreeClassifier::build_tree(const vector<vector<float> > &X, const v
         assert(n_features > 0 && "Invalid max_feature parameter");
         vector<int> selected_features = sample_features(total_features, n_features);
 
-        for (const int f: selected_features) {
-            timer.start("threshold");
-            auto [threshold, impurity] = compute_threshold(X, y, indices, f, label_counts, num_classes);
-            timer.stop("threshold");
+        const SplitterResult best_split = splitter->find_best_split(
+            X, y, indices, selected_features, label_counts, num_classes, min_samples_ratio
+        );
 
-            if (impurity < best_error) {
-                timer.start("split");
-                auto [left_X, right_X] = split_left_right(X, indices, threshold, f);
-                timer.stop("split");
+        const int best_feature = best_split.best_feature;
+        const float best_threshold = best_split.best_threshold;
 
-                const float ratio = static_cast<float>(min(left_X.size(), right_X.size())) /
-                                    static_cast<float>(indices.size());
-
-                // ratio = min_samples_leaf (scikit learn)
-                if (ratio > 0.2f) {
-                    best_error = impurity;
-                    best_feature = f;
-                    best_threshold = threshold;
-
-                    best_left_X = left_X;
-                    best_right_X = right_X;
-                }
-            }
-        }
+        const vector<int>& best_left_X = best_split.left_indices;
+        const vector<int>& best_right_X = best_split.right_indices;
 
         if (best_feature == -1) {
             node->is_leaf = true;
@@ -121,8 +130,8 @@ void DecisionTreeClassifier::build_tree(const vector<vector<float> > &X, const v
         node->left = left_node;
         node->right = right_node;
 
-        stack.emplace(move(best_left_X), left_node);
-        stack.emplace(move(best_right_X), right_node);
+        stack.emplace(best_left_X, left_node);
+        stack.emplace(best_right_X, right_node);
     }
 }
 
@@ -142,18 +151,11 @@ tuple<vector<int>, vector<int>> DecisionTreeClassifier::split_left_right(const v
 
 pair<float, float> DecisionTreeClassifier::compute_threshold(const vector<vector<float> > &X, const vector<int> &y,
                                                              vector<int> &indices, const int f,
-                                                             unordered_map<int, int> &label_counts,
+                                                             const unordered_map<int, int> &label_counts,
                                                              const int num_classes) const {
-    // pdqsort(indices.begin(), indices.end(),
-    //                [&X, f](const int a, const int b) {
-    //                    return X[f][a] < X[f][b];
-    //                });
-
-
     timer.start("treshold: sorting");
     RADIX_SORT_INDICES(indices, X, f);
     timer.stop("treshold: sorting");
-
 
     float best_threshold = 0.0;
     float best_impurity = numeric_limits<float>::max();

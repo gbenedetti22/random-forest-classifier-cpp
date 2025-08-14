@@ -108,7 +108,6 @@ pair<vector<vector<float> >, vector<int>> Dataset::load(string filename,
 
     const size_t filesize = sb.st_size;
 
-    // Memory mapping del file
     void* file_data = mmap(nullptr, filesize, PROT_READ, MAP_PRIVATE, fd, 0);
     if (file_data == MAP_FAILED) {
         perror("Errore mmap");

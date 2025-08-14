@@ -5,12 +5,11 @@
 #include "../include/RandomForestClassifier.h"
 
 #include <iostream>
+#include <omp.h>
 #include <set>
-#include <unordered_set>
 
 #include "indicators.hpp"
 #include "../include/Timer.h"
-#include "../include/BS_thread_pool.hpp"
 using namespace std;
 
 void transpose(vector<vector<float> > &matrix) {
@@ -70,23 +69,37 @@ void transpose(vector<vector<float> > &matrix) {
     }
 }
 
-void RandomForestClassifier::fit(vector<vector<float>> &X, const vector<int> &y) {
+void RandomForestClassifier::fit(vector<vector<float> > &X, const vector<int> &y) {
     if (X.empty() || y.empty()) {
         cerr << "Cannot build the tree on dataset" << endl;
-        return;
+        exit(EXIT_FAILURE);
     }
+    if (params.njobs == 0 || params.njobs < -1) {
+        cerr << "Thread count cannot be 0 or less then -1: " << params.njobs << endl;
+        exit(EXIT_FAILURE);
+    }
+
     const int num_trees = trees.capacity();
+    timer.set_active(false);
     timer.start("transpose");
     cout << "Transposing.." << endl;
     transpose(X);
     timer.stop("transpose");
 
     trees.reserve(num_trees);
+    const int t = params.njobs;
+    int threads_count = t == -1 ? omp_get_max_threads() : t;
+
+    #pragma omp parallel for if(threads_count > 1) num_threads(threads_count)
     for (int i = 0; i < num_trees; i++) {
-        cout << "Training tree n. " << i + 1 << endl;
+        #pragma omp critical(output)
+        {
+            cout << "Thread " << omp_get_thread_num() + 1 << "/" << omp_get_num_threads()
+                 << ": Training tree n. " << i + 1 << endl;
+        }
 
         DecisionTreeClassifier tree(params.split_criteria, params.min_samples_split, params.max_features,
-                                    params.random_seed);
+                                    params.random_seed, params.min_samples_ratio, params.nworkers);
 
         if (params.bootstrap) {
             vector<int> indices;
@@ -96,12 +109,15 @@ void RandomForestClassifier::fit(vector<vector<float>> &X, const vector<int> &y)
             timer.stop("bootstrap");
 
             tree.train(X, y, indices);
-        }else {
+        } else {
             assert(false && "TODO");
             // tree.train(X, y, TODO);
         }
 
-        trees.push_back(tree);
+        #pragma omp critical
+        {
+            trees.push_back(tree);
+        }
     }
 }
 
@@ -162,15 +178,15 @@ float RandomForestClassifier::f1_score(const vector<int> &y, const vector<int> &
     double macro_f1 = 0.0;
     for (int label = 0; label < numClasses; ++label) {
         const double precision = TP[label] + FP[label] > 0
-            ? static_cast<double>(TP[label]) / (TP[label] + FP[label]) 
-            : 0.0;
+                                     ? static_cast<double>(TP[label]) / (TP[label] + FP[label])
+                                     : 0.0;
         const double recall = TP[label] + FN[label] > 0
-            ? static_cast<double>(TP[label]) / (TP[label] + FN[label]) 
-            : 0.0;
+                                  ? static_cast<double>(TP[label]) / (TP[label] + FN[label])
+                                  : 0.0;
 
         const double f1 = precision + recall > 0
-            ? 2.0 * precision * recall / (precision + recall) 
-            : 0.0;
+                              ? 2.0 * precision * recall / (precision + recall)
+                              : 0.0;
 
         macro_f1 += f1;
     }
@@ -185,7 +201,7 @@ void RandomForestClassifier::bootstrap_sample(const int n_samples, vector<int> &
 
     if (params.random_seed.has_value()) {
         srand(params.random_seed.value());
-    }else {
+    } else {
         srand(time(nullptr));
     }
 
@@ -194,5 +210,4 @@ void RandomForestClassifier::bootstrap_sample(const int n_samples, vector<int> &
 
         indices.push_back(idx);
     }
-
 }

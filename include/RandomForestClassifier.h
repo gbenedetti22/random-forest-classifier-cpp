@@ -18,6 +18,9 @@ public:
         const std::variant<int, std::string> max_features = "sqrt";
         bool bootstrap = true;
         const std::optional<int> random_seed = std::nullopt;
+        float min_samples_ratio = 0.2f;
+        int njobs = 1;
+        int nworkers = 1;
     };
 
     explicit RandomForestClassifier(const RandomForestParams &params)
@@ -34,7 +37,7 @@ public:
     [[nodiscard]] static float f1_score(const std::vector<int> &y, const std::vector<int> &y_pred) ;
 
 private:
-    RandomForestParams params;
+    const RandomForestParams params;
     std::vector<DecisionTreeClassifier> trees;
 
     void bootstrap_sample(int n_samples, std::vector<int> &indices) const;

@@ -33,10 +33,9 @@ class DecisionTreeClassifier {
 
     static std::tuple<std::vector<int>, std::vector<int>> split_left_right(const std::vector<std::vector<float>> &X, const std::vector<int> &indices, float th, int f);
     std::pair<float, float> compute_threshold(const std::vector<std::vector<float>> &X,
-                                                const std::vector<int> &y, std::vector<int> &indices, int f, std::unordered_map<int, int> &label_counts, int
-                                                num_classes) const;
+                                              const std::vector<int> &y, std::vector<int> &indices, int f, const std::unordered_map<int, int> &label_counts, int
+                                              num_classes) const;
     static int compute_majority_class(const std::unordered_map<int, int> &counts);
-    static int compute_error(const std::unordered_map<int, int> &counts, const std::vector<int> &y_test);
 
     static float gini(const std::vector<int> &counts, int total);
 
@@ -51,16 +50,18 @@ public:
     int min_samples_split;
     const std::variant<int, std::string>& max_features;
     const std::optional<int> random_seed;
+    float min_samples_ratio;
+    int nworkers;
 
 DecisionTreeClassifier(const std::string &split_criteria, const int min_samples_split, const std::variant<int, std::string> &max_features,
-        const std::optional<int> &random_seed)
+        const std::optional<int> &random_seed, const float min_samples_ratio, const int nworkers)
         : root(nullptr), split_criteria(split_criteria),
           min_samples_split(min_samples_split),
           max_features(max_features),
-          random_seed(random_seed) {
-    if (random_seed.has_value()) {
-        rng = std::mt19937(random_seed.value());
-    }
+          random_seed(random_seed), min_samples_ratio(min_samples_ratio), nworkers(nworkers) {
+        if (random_seed.has_value()) {
+            rng = std::mt19937(random_seed.value());
+        }
     }
 
     void train(const std::vector<std::vector<float>> &X, const std::vector<int> &y, std::vector<int> &samples);
