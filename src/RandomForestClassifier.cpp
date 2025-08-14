@@ -4,11 +4,11 @@
 
 #include "../include/RandomForestClassifier.h"
 
+#include <cassert>
 #include <iostream>
 #include <omp.h>
 #include <set>
 
-#include "indicators.hpp"
 #include "../include/Timer.h"
 using namespace std;
 
