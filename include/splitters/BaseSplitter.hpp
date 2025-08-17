@@ -7,8 +7,10 @@
 #include <vector>
 #include <unordered_map>
 
+#include "utils.h"
+
 using ComputeThresholdFn = std::function<std::pair<float, float>(
-    const std::vector<std::vector<float>> &,
+    const Eigen::Map<ColMajor> &,
     const std::vector<int> &,
     std::vector<int> &,
     int,
@@ -16,7 +18,7 @@ using ComputeThresholdFn = std::function<std::pair<float, float>(
     int)>;
 
 using SplitLeftRightFn = std::function<std::tuple<std::vector<int>, std::vector<int>>(
-    const std::vector<std::vector<float>> &,
+    const Eigen::Map<ColMajor> &,
     const std::vector<int> &,
     float,
     int)>;
@@ -30,7 +32,7 @@ struct SplitterResult {
 
     SplitterResult() = default;
 
-    SplitterResult(float imp, float thresh, int feat, std::vector<int> left, std::vector<int> right)
+    SplitterResult(const float imp, const float thresh, const int feat, std::vector<int> left, std::vector<int> right)
         : best_impurity(imp), best_threshold(thresh), best_feature(feat),
           left_indices(std::move(left)), right_indices(std::move(right)) {}
 };
@@ -47,13 +49,13 @@ public:
           split_left_right_fn(std::move(split_left_right_fn)) {}
 
     virtual SplitterResult find_best_split(
-        const std::vector<std::vector<float>> &X,
+        const Eigen::Map<ColMajor> &X,
         const std::vector<int> &y,
         std::vector<int> &indices,
         const std::vector<int> &selected_features,
         std::unordered_map<int, int> &label_counts,
         int num_classes,
-        const float min_samples_ratio) = 0;
+        float min_samples_ratio) = 0;
 };
 
 #endif // BASESPLITTER_HPP

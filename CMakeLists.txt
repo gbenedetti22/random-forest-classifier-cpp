@@ -1,27 +1,43 @@
 cmake_minimum_required(VERSION 3.26.5)
-project(dicision_tree)
-set(CMAKE_CXX_STANDARD 23)
+project(decision_tree)
 
-include_directories(utils)
+set(CMAKE_CXX_STANDARD 23)
 
 set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0")
 set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
-find_package(OpenMP REQUIRED)
 
-add_executable(dicision_tree main.cpp
+find_package(OpenMP REQUIRED)
+find_package(MPI QUIET)
+
+add_library(libs
         src/Dataset.cpp
-        include/tabulate.hpp
         src/RandomForestClassifier.cpp
-        include/RandomForestClassifier.h
         src/DecisionTreeClassifier.cpp
-        include/DecisionTreeClassifier.h
-        include/Timer.h
         src/Timer.cpp
-        include/radix_sort_indices.h
-        include/splitters/BaseSplitter.hpp
-        include/splitters/SplitterFF.hpp
-        include/splitters/SequentialSplitter.hpp
 )
 
-target_link_libraries(dicision_tree OpenMP::OpenMP_CXX)
-target_include_directories(dicision_tree PRIVATE ${CMAKE_SOURCE_DIR}/include)
+target_include_directories(libs PUBLIC
+        ${CMAKE_SOURCE_DIR}/include
+        ${CMAKE_SOURCE_DIR}/eigen
+)
+add_subdirectory(external/matplotplusplus)
+
+target_link_libraries(libs PUBLIC OpenMP::OpenMP_CXX)
+
+add_executable(main main.cpp)
+target_link_libraries(main PRIVATE libs)
+target_link_libraries(main PRIVATE matplot)
+
+add_executable(mpi main_mpi.cpp)
+target_link_libraries(mpi PRIVATE libs)
+target_link_libraries(mpi PRIVATE matplot)
+
+if(MPI_FOUND)
+    message(STATUS "MPI found: ${MPI_C_COMPILER}")
+    target_link_libraries(mpi PRIVATE MPI::MPI_CXX)
+    target_compile_definitions(mpi PRIVATE MPI_AVAILABLE)
+    target_link_libraries(libs PUBLIC MPI::MPI_CXX)
+    target_compile_definitions(libs PUBLIC MPI_AVAILABLE)
+else()
+    message(STATUS "MPI not found, compiling mpi target without MPI support")
+endif()

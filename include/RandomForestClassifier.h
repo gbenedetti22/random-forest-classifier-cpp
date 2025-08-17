@@ -21,6 +21,7 @@ public:
         float min_samples_ratio = 0.2f;
         int njobs = 1;
         int nworkers = 1;
+        mutable bool mpi = false;
     };
 
     explicit RandomForestClassifier(const RandomForestParams &params)
@@ -28,19 +29,23 @@ public:
         trees.reserve(params.n_trees);
     }
 
-    void fit(std::vector<std::vector<float>> &X, const std::vector<int> &y);
+    void fit(const std::vector<std::vector<float>> &X, const std::vector<int> &y);
+
+    void fit(std::vector<float> &X, const std::vector<int> &y, const std::pair<int, int> &shape);
 
     [[nodiscard]] int predict(const std::vector<float> &x) const;
 
     [[nodiscard]] std::pair<float, float> evaluate(const std::vector<std::vector<float> > &X, const std::vector<int> &y) const;
 
-    [[nodiscard]] static float f1_score(const std::vector<int> &y, const std::vector<int> &y_pred) ;
 
 private:
     const RandomForestParams params;
+    int num_classes;
     std::vector<DecisionTreeClassifier> trees;
 
     void bootstrap_sample(int n_samples, std::vector<int> &indices) const;
+
+    [[nodiscard]] static float f1_score(const std::vector<int> &y, const std::vector<int> &y_pred) ;
 };
 
 

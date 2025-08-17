@@ -6,6 +6,7 @@
 #include "include/Dataset.h"
 #include "include/RandomForestClassifier.h"
 #include "include/Timer.h"
+#include <matplot/matplot.h>
 
 using namespace std;
 
@@ -39,19 +40,20 @@ void print_duration(chrono::steady_clock::duration duration) {
 
 int main() {
     cout << "Loading dataset.." << endl;
-    auto [X, y] = Dataset::load("iris", "../dataset");
+    auto [X, y] = Dataset::load("susy", "../dataset");
 
     auto [X_train, y_train, X_test, y_test] =
-            Dataset::train_test_split(X, y, 0.7);
+        Dataset::train_test_split(X, y, 0.7);
 
     cout << "Training set size: " << X_train.size() << endl;
     cout << "Test set size: " << X_test.size() << endl << endl;
 
     cout << "Training start " << endl;
-    RandomForestClassifier model({.n_trees = 1, .random_seed = 8});
+    RandomForestClassifier model({.n_trees = 10, .random_seed = 8, .njobs = -1});
 
+    vector<float> X_train_flat = flatten(X_train);
     const auto start = chrono::steady_clock::now();
-    model.fit(X_train, y_train);
+    model.fit(X_train_flat, y_train, {X_train.size(), X_train[0].size()});
     const auto end = chrono::steady_clock::now();
 
     cout << "Training end! :)" << endl;

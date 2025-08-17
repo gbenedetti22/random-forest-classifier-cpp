@@ -16,7 +16,7 @@ class SplitterFF final : public BaseSplitter {
 
     struct Worker {
         const SplitterFF &parent;
-        const std::vector<std::vector<float> > &X;
+        const Eigen::Map<ColMajor> &X;
         const std::vector<int> &y;
         const std::vector<int> &indices;
         const std::vector<int> &selected_features;
@@ -25,7 +25,7 @@ class SplitterFF final : public BaseSplitter {
         const float min_samples_ratio;
 
         Worker(const SplitterFF &p,
-               const std::vector<std::vector<float> > &X,
+               const Eigen::Map<ColMajor> &X,
                const std::vector<int> &y,
                const std::vector<int> &indices,
                const std::vector<int> &selected_features,
@@ -71,7 +71,7 @@ public:
     }
 
     SplitterResult find_best_split(
-        const std::vector<std::vector<float> > &X,
+        const Eigen::Map<ColMajor> &X,
         const std::vector<int> &y,
         std::vector<int> &indices,
         const std::vector<int> &selected_features,

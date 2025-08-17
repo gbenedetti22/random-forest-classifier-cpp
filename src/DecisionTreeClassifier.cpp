@@ -15,14 +15,17 @@
 #include <ranges>
 #include <stack>
 #include <tuple>
+#include <tuple>
+#include <tuple>
 #include "../include/Timer.h"
 #include "../include/radix_sort_indices.h"
 #include "../include/splitters/SplitterFF.hpp"
 #include "splitters/SequentialSplitter.hpp"
+#include <Eigen/Core>
 
 using namespace std;
 
-void DecisionTreeClassifier::train(const vector<vector<float> > &X, const vector<int> &y, vector<int> &samples) {
+void DecisionTreeClassifier::train(const Eigen::Map<ColMajor> &X, const vector<int> &y, vector<int> &samples) {
     build_tree(X, y, samples);
 }
 
@@ -37,10 +40,10 @@ int DecisionTreeClassifier::predict(const vector<float> &x) const {
     return node->predicted_class;
 }
 
-void DecisionTreeClassifier::build_tree(const vector<vector<float> > &X, const vector<int> &y, vector<int> &samples) {
+void DecisionTreeClassifier::build_tree(const Eigen::Map<ColMajor> &X, const vector<int> &y, vector<int> &samples) {
     root = new TreeNode();
 
-    const int total_features = static_cast<int>(X.size());
+    const int total_features = static_cast<int>(X.rows());
     unordered_map<string, int> op_value = {{"sqrt", sqrt(total_features)}, {"log2", log2(total_features)}};
 
     stack<tuple<vector<int>, TreeNode *> > stack;
@@ -54,7 +57,7 @@ void DecisionTreeClassifier::build_tree(const vector<vector<float> > &X, const v
         n_features = op_value[op];
     }
 
-    auto compute_fn = [this](const vector<vector<float>> &X,
+    auto compute_fn = [this](const Eigen::Map<ColMajor> &X,
                          const vector<int> &y,
                          vector<int> &indices,
                          const int f,
@@ -63,7 +66,7 @@ void DecisionTreeClassifier::build_tree(const vector<vector<float> > &X, const v
         return this->compute_threshold(X, y, indices, f, label_counts, num_classes);
     };
 
-    auto split_fn = [this](const vector<vector<float>> &X,
+    auto split_fn = [this](const Eigen::Map<ColMajor> &X,
                            const vector<int> &indices,
                            const float th,
                            const int f) -> tuple<vector<int>, vector<int>> {
@@ -135,12 +138,12 @@ void DecisionTreeClassifier::build_tree(const vector<vector<float> > &X, const v
     }
 }
 
-tuple<vector<int>, vector<int>> DecisionTreeClassifier::split_left_right(const vector<vector<float> > &X,
+tuple<vector<int>, vector<int>> DecisionTreeClassifier::split_left_right(const Eigen::Map<ColMajor> &X,
                                               const vector<int> &indices,
                                               const float th,
                                               const int f) {
     const auto it = ranges::partition_point(indices, [&X, th, f](const int i) {
-        return X[f][i] < th;
+        return X(f, i) < th;
     });
 
     vector left_indices(indices.begin(), it);
@@ -149,7 +152,7 @@ tuple<vector<int>, vector<int>> DecisionTreeClassifier::split_left_right(const v
     return std::move(tuple{left_indices, right_indices});
 }
 
-pair<float, float> DecisionTreeClassifier::compute_threshold(const vector<vector<float> > &X, const vector<int> &y,
+pair<float, float> DecisionTreeClassifier::compute_threshold(const Eigen::Map<ColMajor> &X, const vector<int> &y,
                                                              vector<int> &indices, const int f,
                                                              const unordered_map<int, int> &label_counts,
                                                              const int num_classes) const {
@@ -193,8 +196,8 @@ pair<float, float> DecisionTreeClassifier::compute_threshold(const vector<vector
         const int current_idx = indices[i];
         const int next_idx = indices[i + 1];
 
-        const float current_val = X[f][current_idx];
-        const float next_val = X[f][next_idx];
+        const float current_val = X(f,current_idx);
+        const float next_val = X(f, next_idx);
 
         if (current_val == next_val) continue;
 
