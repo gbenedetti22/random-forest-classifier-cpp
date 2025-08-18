@@ -49,11 +49,10 @@ int main() {
     cout << "Test set size: " << X_test.size() << endl << endl;
 
     cout << "Training start " << endl;
-    RandomForestClassifier model({.n_trees = 10, .random_seed = 8, .njobs = -1});
+    RandomForestClassifier model({.n_trees = 1, .random_seed = 8, .njobs = -1});
 
-    vector<float> X_train_flat = flatten(X_train);
     const auto start = chrono::steady_clock::now();
-    model.fit(X_train_flat, y_train, {X_train.size(), X_train[0].size()});
+    model.fit(X_train, y_train);
     const auto end = chrono::steady_clock::now();
 
     cout << "Training end! :)" << endl;

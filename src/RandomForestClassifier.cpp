@@ -152,6 +152,7 @@ pair<float, float> RandomForestClassifier::evaluate(const vector<vector<float>> 
     y_pred.reserve(X.size());
 
     if (params.mpi) {
+#ifdef MPI_AVAILABLE
         int rank, size;
         MPI_Comm_rank(MPI_COMM_WORLD, &rank);
         MPI_Comm_size(MPI_COMM_WORLD, &size);
@@ -195,6 +196,7 @@ pair<float, float> RandomForestClassifier::evaluate(const vector<vector<float>> 
 
 
         return make_pair(static_cast<float>(classified) / X.size(), f1_score(y, y_pred));
+#endif
     }
 
 
