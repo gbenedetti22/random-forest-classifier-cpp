@@ -40,7 +40,7 @@ public:
 
 private:
     const RandomForestParams params;
-    int num_classes;
+    int num_classes = 0;
     std::vector<DecisionTreeClassifier> trees;
 
     void bootstrap_sample(int n_samples, std::vector<int> &indices) const;

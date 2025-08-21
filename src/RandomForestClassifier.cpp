@@ -84,8 +84,10 @@ void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, const p
 
             tree.train(X_train, y, indices);
         } else {
-            assert(false && "TODO");
-            // tree.train(X, y, TODO);
+            vector<int> indices(X_train.cols());
+
+            iota(indices.begin(), indices.end(), 0);
+            tree.train(X_train, y, indices);
         }
 
 #pragma omp critical
