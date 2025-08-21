@@ -63,7 +63,7 @@ DecisionTreeClassifier(const std::string &split_criteria, const int min_samples_
           max_features(max_features),
           random_seed(random_seed), min_samples_ratio(min_samples_ratio), nworkers(nworkers) {
         if (random_seed.has_value()) {
-            rng = std::mt19937(random_seed.value());
+            rng = std::mt19937(random_seed.value() + 1);
         }
     }
 
