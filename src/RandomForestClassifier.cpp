@@ -22,7 +22,7 @@ void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, const p
     // fit(flat, y, {X.size(), X[0].size()});
 }
 
-void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<int> &y) {
+void RandomForestClassifier::fit(vector<vector<float> > &X, const vector<int> &y) {
     if (X.empty() || y.empty()) {
         cerr << "Cannot build the tree on dataset" << endl;
         exit(EXIT_FAILURE);
@@ -38,7 +38,7 @@ void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<i
     int threads_count = t == -1 ? omp_get_max_threads() : t;
     int num_trees = trees.capacity();
     int rank, size;
-    // timer.set_active(false);
+    timer.set_active(false);
 
     if (params.mpi) {
 #ifdef MPI_AVAILABLE

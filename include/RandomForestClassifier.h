@@ -29,7 +29,7 @@ public:
         trees.reserve(params.n_trees);
     }
 
-    void fit(const std::vector<std::vector<float>> &X, const std::vector<int> &y);
+    void fit(std::vector<std::vector<float>> &X, const std::vector<int> &y);
 
     void fit(std::vector<float> &X, const std::vector<int> &y, const std::pair<int, int> &shape);
 

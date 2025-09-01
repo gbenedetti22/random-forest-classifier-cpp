@@ -32,11 +32,11 @@ class DecisionTreeClassifier {
     TreeNode* root;
     std::mt19937 rng;
 
-    void build_tree(const std::vector<std::vector<float>> &X, const std::vector<int> &y, std::vector<int> &samples);
+    void build_tree(std::vector<std::vector<float>> &X, std::vector<int> &y);
 
-    static std::tuple<std::vector<int>, std::vector<int>> split_left_right(const std::vector<std::vector<float>> &X, const std::vector<int> &indices, float th, int f);
-    std::pair<float, float> compute_threshold(const std::vector<std::vector<float>> &X,
-                                              const std::vector<int> &y, std::vector<int> &indices, int f, const std::unordered_map<int, int> &label_counts, int
+    static int split_left_right(std::vector<std::vector<float>> &X, std::vector<int> &y, int start, int end, float th, int f);
+    std::tuple<float, float, int> compute_threshold(const std::vector<std::vector<float>> &X,
+                                              const std::vector<int> &y, int start, int end, int f, const std::unordered_map<int, int> &label_counts, int
                                               num_classes) const;
     static int compute_majority_class(const std::unordered_map<int, int> &counts);
 
@@ -67,7 +67,7 @@ DecisionTreeClassifier(const std::string &split_criteria, const int min_samples_
         }
     }
 
-    void train(const std::vector<std::vector<float>> &X, const std::vector<int> &y, std::vector<int> &samples);
+    void train(const std::vector<std::vector<float>> &X, const std::vector<int> &y, const std::vector<int> &indices);
     [[nodiscard]] int predict(const std::vector<float>& x) const;
 };
 

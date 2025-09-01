@@ -31,14 +31,14 @@ namespace radix_sort_detail {
         return result;
     }
 
-    struct IndexKeyPair {
-        int index;
-        uint64_t key;
+    struct PairWithKey {
+        std::pair<float, int> pair;
+        uint32_t key;
     };
 
     template<int BYTE_INDEX>
-    inline void counting_sort_byte(std::vector<IndexKeyPair> &pairs,
-                                   std::vector<IndexKeyPair> &temp_pairs) {
+    void counting_sort_byte(std::vector<PairWithKey> &pairs,
+                            std::vector<PairWithKey> &temp_pairs) {
         constexpr int RADIX = 256;
         int counts[RADIX] = {0};
 
@@ -66,21 +66,20 @@ namespace radix_sort_detail {
         std::swap(pairs, temp_pairs);
     }
 
-    // Radix sort ottimizzato per indici basato su valori double
-    template<typename Container, typename ValueExtractor>
-    void radix_sort_indices_impl(Container &indices, ValueExtractor extract_value) {
-        const int n = indices.size();
+    // Radix sort ottimizzato per vector<pair<float, int>>
+    void radix_sort_pairs_impl(std::vector<std::pair<float, int>> &values) {
+        const int n = values.size();
         if (n <= 1) return;
 
-        // Crea coppie indice-chiave
-        std::vector<IndexKeyPair> pairs(n);
+        // Crea strutture con chiavi di ordinamento
+        std::vector<PairWithKey> pairs(n);
         for (int i = 0; i < n; ++i) {
-            pairs[i].index = indices[i];
-            pairs[i].key = float_to_sortable_uint32(extract_value(indices[i]));
+            pairs[i].pair = values[i];
+            pairs[i].key = float_to_sortable_uint32(values[i].first);
         }
 
         // Buffer temporaneo per il counting sort
-        std::vector<IndexKeyPair> temp_pairs(n);
+        std::vector<PairWithKey> temp_pairs(n);
 
         // Esegui counting sort per ogni byte (dal meno al più significativo)
         counting_sort_byte<0>(pairs, temp_pairs);
@@ -88,37 +87,20 @@ namespace radix_sort_detail {
         counting_sort_byte<2>(pairs, temp_pairs);
         counting_sort_byte<3>(pairs, temp_pairs);
 
-        // Ricopia gli indici ordinati
+        // Ricopia le coppie ordinate
         for (int i = 0; i < n; ++i) {
-            indices[i] = pairs[i].index;
+            values[i] = pairs[i].pair;
         }
     }
 } // namespace radix_sort_detail
 
-// Funzione principale: drop-in replacement per pdqsort con lambda
-template<typename Container, typename ValueExtractor>
-void radix_sort_indices(Container &indices, ValueExtractor extract_value) {
-    radix_sort_detail::radix_sort_indices_impl(indices, extract_value);
+// Funzione principale per ordinare vector<pair<float, int>> per il valore float
+inline void radix_sort_pairs(std::vector<std::pair<float, int>> &values) {
+    radix_sort_detail::radix_sort_pairs_impl(values);
 }
 
-// Versione semplificata per il caso comune: ordinare indici 0..n-1
-template<typename ValueContainer>
-std::vector<int> radix_sort_create_indices(const ValueContainer &values) {
-    const int n = values.size();
-    std::vector<int> indices(n);
 
-    // Inizializza indici 0, 1, 2, ..., n-1
-    for (int i = 0; i < n; ++i) {
-        indices[i] = i;
-    }
+#define RADIX_SORT_PAIRS(pairs) \
+    radix_sort_pairs(pairs)
 
-    // Ordina usando radix sort
-    radix_sort_indices(indices, [&values](int idx) { return values[idx]; });
-
-    return indices;
-}
-
-#define RADIX_SORT_INDICES(indices, X, f) \
-    radix_sort_indices(indices, [&X, f](int idx) { return X[idx][f]; })
-
-#endif //RADIX_SORT_INDICES_H
+#endif //RADIX_SORT_PAIRS_H
