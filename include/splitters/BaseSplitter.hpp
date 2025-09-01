@@ -10,7 +10,7 @@
 #include "utils.h"
 
 using ComputeThresholdFn = std::function<std::pair<float, float>(
-    const Eigen::Map<ColMajor> &,
+    const std::vector<std::vector<float>> &,
     const std::vector<int> &,
     std::vector<int> &,
     int,
@@ -18,7 +18,7 @@ using ComputeThresholdFn = std::function<std::pair<float, float>(
     int)>;
 
 using SplitLeftRightFn = std::function<std::tuple<std::vector<int>, std::vector<int>>(
-    const Eigen::Map<ColMajor> &,
+    const std::vector<std::vector<float>> &,
     const std::vector<int> &,
     float,
     int)>;
@@ -49,7 +49,7 @@ public:
           split_left_right_fn(std::move(split_left_right_fn)) {}
 
     virtual SplitterResult find_best_split(
-        const Eigen::Map<ColMajor> &X,
+        const std::vector<std::vector<float>> &X,
         const std::vector<int> &y,
         std::vector<int> &indices,
         const std::vector<int> &selected_features,

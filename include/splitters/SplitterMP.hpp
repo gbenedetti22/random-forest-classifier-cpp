@@ -1,113 +1,67 @@
+//
+// Created by gabriele on 14/08/25.
+//
+
 #ifndef SPLITTERMP_HPP
 #define SPLITTERMP_HPP
+#include "BaseSplitter.hpp"
+#include "Timer.h"
+using namespace std;
 
-#include <vector>
-#include <tuple>
-#include <limits>
-#include <unordered_map>
-#include <functional>
-#include <omp.h>
+class SplitterMP : public BaseSplitter {
+    int nworkers;
 
-struct Candidate {
-    float error;
-    int feature;
-    float threshold;
-    std::vector<int> left_X;
-    std::vector<int> right_X;
-    bool valid;
-};
-
-#pragma omp declare reduction(merge_candidate : Candidate : \
-    omp_out = (omp_in.valid && (!omp_out.valid || omp_in.error < omp_out.error)) ? omp_in : omp_out \
-) initializer(omp_priv = Candidate{std::numeric_limits<float>::max(), -1, 0.0f, {}, {}, false})
-
-class SplitterMP {
 public:
-    float best_error;
-    int best_feature;
-    float best_threshold;
-    std::vector<int> best_left_X;
-    std::vector<int> best_right_X;
-
-    using ComputeThresholdFn = std::function<std::pair<float, float>(
-        const std::vector<std::vector<float> > &,
-        const std::vector<int> &,
-        std::vector<int> &,
-        int,
-        std::unordered_map<int, int> &,
-        int)>;
-
-    using SplitLeftRightFn = std::function<std::tuple<std::vector<int>, std::vector<int> >(
-        const std::vector<std::vector<float> > &,
-        const std::vector<int> &,
-        float,
-        int)>;
-
-    SplitterMP(const std::vector<int> &selected_features,
-               const std::vector<std::vector<float> > &X,
-               const std::vector<int> &y,
-               const std::vector<int> &indices,
-               std::unordered_map<int, int> &label_counts,
-               int num_classes,
-               ComputeThresholdFn compute_threshold_fn,
-               SplitLeftRightFn split_left_right_fn)
-        : selected_features(selected_features),
-          X(X), y(y), indices(indices),
-          label_counts(label_counts), num_classes(num_classes),
-          compute_threshold_fn(std::move(compute_threshold_fn)),
-          split_left_right_fn(std::move(split_left_right_fn)) {
-        resetResults();
+    SplitterMP(const ComputeThresholdFn &compute_threshold_fn, const SplitLeftRightFn &split_left_right_fn,
+               const int workers = 4)
+        : BaseSplitter(compute_threshold_fn, split_left_right_fn), nworkers(workers) {
     }
 
-    void run(int nthreads = 4) {
-        omp_set_nested(1);
+    SplitterResult find_best_split(const vector<vector<float>> &X, const vector<int> &y, vector<int> &indices,
+                                   const vector<int> &selected_features, unordered_map<int, int> &label_counts,
+                                   const int num_classes, const float min_samples_ratio) override {
+        SplitterResult best_split;
 
-        #pragma omp parallel for num_threads(nthreads) schedule(dynamic) \
-        firstprivate(indices) \
-        shared(best_error, best_feature, best_threshold, best_left_X, best_right_X)
-        for (const int f : selected_features) {
-            auto [threshold, impurity] = compute_threshold_fn(X, y, indices, f, label_counts, num_classes);
+#pragma omp parallel num_threads(nworkers)
+        {
+            SplitterResult local_best;
+            vector<int> local_indices = indices;
 
-            if (impurity < best_error) {
-                auto [left_X, right_X] = split_left_right_fn(X, indices, threshold, f);
+#pragma omp for nowait
+            for (const int f : selected_features) {
+                auto [threshold, impurity] = compute_threshold_fn(X, y, local_indices, f, label_counts, num_classes);
 
-                float ratio = static_cast<float>(std::min(left_X.size(), right_X.size())) /
-                              static_cast<float>(indices.size());
+                if (impurity < local_best.best_impurity) {
+                    auto [left_X, right_X] = split_left_right_fn(X, local_indices, threshold, f);
 
-                if (ratio > 0.2f) {
-        #pragma omp critical
-                    {
-                        if (impurity < best_error) {
-                            best_error = impurity;
-                            best_feature = f;
-                            best_threshold = threshold;
-                            best_left_X = left_X;
-                            best_right_X = right_X;
-                        }
+                    const float ratio = static_cast<float>(std::min(left_X.size(), right_X.size())) /
+                                        static_cast<float>(local_indices.size());
+
+                    if (ratio > min_samples_ratio) {
+                        local_best.best_impurity = impurity;
+                        local_best.best_feature = f;
+                        local_best.best_threshold = threshold;
+
+                        local_best.left_indices = left_X;
+                        local_best.right_indices = right_X;
                     }
                 }
             }
+
+#pragma omp critical
+            {
+                if (local_best.best_impurity < best_split.best_impurity) {
+                    best_split.best_impurity = local_best.best_impurity;
+                    best_split.best_feature = local_best.best_feature;
+                    best_split.best_threshold = local_best.best_threshold;
+
+                    best_split.left_indices = local_best.left_indices;
+                    best_split.right_indices = local_best.right_indices;
+                }
+            }
         }
+
+        return best_split;
     }
-
-private:
-    void resetResults() {
-        best_error = std::numeric_limits<float>::max();
-        best_feature = -1;
-        best_threshold = 0.0f;
-        best_left_X.clear();
-        best_right_X.clear();
-    }
-
-    const std::vector<int> &selected_features;
-    const std::vector<std::vector<float> > &X;
-    const std::vector<int> &y;
-    std::vector<int> indices;
-    std::unordered_map<int, int> &label_counts;
-    int num_classes;
-
-    ComputeThresholdFn compute_threshold_fn;
-    SplitLeftRightFn split_left_right_fn;
 };
-
-#endif // SPLITTERMP_HPP
+#endif

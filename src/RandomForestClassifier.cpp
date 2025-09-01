@@ -17,12 +17,12 @@
 #include "../include/Timer.h"
 using namespace std;
 
-void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<int> &y) {
-    vector<float> flat = flatten(X);
-    fit(flat, y, {X.size(), X[0].size()});
+void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, const pair<int, int> &shape) {
+    // vector<float> flat = flatten(X);
+    // fit(flat, y, {X.size(), X[0].size()});
 }
 
-void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, const pair<int, int> &shape) {
+void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<int> &y) {
     if (X.empty() || y.empty()) {
         cerr << "Cannot build the tree on dataset" << endl;
         exit(EXIT_FAILURE);
@@ -32,16 +32,13 @@ void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, const p
         exit(EXIT_FAILURE);
     }
 
-    const int rows = shape.first;
-    const int cols = shape.second;
     num_classes = ranges::max(y) + 1;
 
-    const Eigen::Map<ColMajor> X_train(X.data(), cols, rows);
     const int t = params.njobs;
     int threads_count = t == -1 ? omp_get_max_threads() : t;
     int num_trees = trees.capacity();
     int rank, size;
-    timer.set_active(false);
+    // timer.set_active(false);
 
     if (params.mpi) {
 #ifdef MPI_AVAILABLE
@@ -79,15 +76,15 @@ void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, const p
             vector<int> indices;
 
             timer.start("bootstrap");
-            bootstrap_sample(X_train.cols(), indices);
+            bootstrap_sample(X.size(), indices);
             timer.stop("bootstrap");
 
-            tree.train(X_train, y, indices);
+            tree.train(X, y, indices);
         } else {
-            vector<int> indices(X_train.cols());
+            vector<int> indices(X.size());
 
             iota(indices.begin(), indices.end(), 0);
-            tree.train(X_train, y, indices);
+            tree.train(X, y, indices);
         }
 
 #pragma omp critical

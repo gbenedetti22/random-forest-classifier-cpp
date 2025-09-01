@@ -32,10 +32,10 @@ class DecisionTreeClassifier {
     TreeNode* root;
     std::mt19937 rng;
 
-    void build_tree(const Eigen::Map<ColMajor> &X, const std::vector<int> &y, std::vector<int> &samples);
+    void build_tree(const std::vector<std::vector<float>> &X, const std::vector<int> &y, std::vector<int> &samples);
 
-    static std::tuple<std::vector<int>, std::vector<int>> split_left_right(const Eigen::Map<ColMajor> &X, const std::vector<int> &indices, float th, int f);
-    std::pair<float, float> compute_threshold(const Eigen::Map<ColMajor> &X,
+    static std::tuple<std::vector<int>, std::vector<int>> split_left_right(const std::vector<std::vector<float>> &X, const std::vector<int> &indices, float th, int f);
+    std::pair<float, float> compute_threshold(const std::vector<std::vector<float>> &X,
                                               const std::vector<int> &y, std::vector<int> &indices, int f, const std::unordered_map<int, int> &label_counts, int
                                               num_classes) const;
     static int compute_majority_class(const std::unordered_map<int, int> &counts);
@@ -63,11 +63,11 @@ DecisionTreeClassifier(const std::string &split_criteria, const int min_samples_
           max_features(max_features),
           random_seed(random_seed), min_samples_ratio(min_samples_ratio), nworkers(nworkers) {
         if (random_seed.has_value()) {
-            rng = std::mt19937(random_seed.value() + 1);
+            rng = std::mt19937(random_seed.value());
         }
     }
 
-    void train(const Eigen::Map<ColMajor> &X, const std::vector<int> &y, std::vector<int> &samples);
+    void train(const std::vector<std::vector<float>> &X, const std::vector<int> &y, std::vector<int> &samples);
     [[nodiscard]] int predict(const std::vector<float>& x) const;
 };
 

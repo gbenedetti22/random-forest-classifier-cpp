@@ -119,6 +119,6 @@ std::vector<int> radix_sort_create_indices(const ValueContainer &values) {
 }
 
 #define RADIX_SORT_INDICES(indices, X, f) \
-    radix_sort_indices(indices, [&X, f](int idx) { return X(f, idx); })
+    radix_sort_indices(indices, [&X, f](int idx) { return X[idx][f]; })
 
 #endif //RADIX_SORT_INDICES_H

@@ -14,7 +14,7 @@ public:
         : BaseSplitter(compute_threshold_fn, split_left_right_fn) {
     }
 
-    SplitterResult find_best_split(const Eigen::Map<ColMajor> &X, const vector<int> &y, vector<int> &indices,
+    SplitterResult find_best_split(const vector<vector<float>> &X, const vector<int> &y, vector<int> &indices,
                                    const vector<int> &selected_features, unordered_map<int, int> &label_counts,
                                    const int num_classes, const float min_samples_ratio) override {
         SplitterResult best_split;
