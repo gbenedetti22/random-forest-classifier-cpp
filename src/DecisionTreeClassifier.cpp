@@ -145,13 +145,20 @@ void DecisionTreeClassifier::build_tree(TrainMatrix &X, vector<int> &y) {
 
         for (const int f: selected_features) {
             timer.start("threshold");
-            auto [threshold, impurity] = compute_threshold(X, y, start, end, f, label_counts, num_classes);
+            auto [threshold, impurity, split_point] = compute_threshold(X, y, start, end, f, label_counts, num_classes);
             timer.stop("threshold");
 
             if (impurity < best_impurity) {
-                best_impurity = impurity;
-                best_feature = f;
-                best_threshold = threshold;
+                int total_left = split_point - start;
+                int total_right = end - split_point;
+                const float ratio = static_cast<float>(min(total_left, total_right)) /
+                            static_cast<float>(end - start);
+
+                if (ratio > min_samples_ratio) {
+                    best_impurity = impurity;
+                    best_feature = f;
+                    best_threshold = threshold;
+                }
             }
         }
 
@@ -176,15 +183,6 @@ void DecisionTreeClassifier::build_tree(TrainMatrix &X, vector<int> &y) {
         int split_point = split_left_right(X, y, start, end, best_threshold, best_feature);
         timer.stop("split");
 
-        const float ratio = static_cast<float>(min(split_point - start, end - split_point)) /
-                            static_cast<float>(end - start);
-
-        // ratio = min_samples_leaf (scikit learn)
-        if (ratio <= min_samples_ratio) {
-            node->is_leaf = true;
-            node->predicted_class = compute_majority_class(label_counts);
-            continue;
-        }
 
         auto *left_node = new TreeNode();
         auto *right_node = new TreeNode();
@@ -230,7 +228,7 @@ int DecisionTreeClassifier::split_left_right(TrainMatrix &X,
     return left; // left points to first element >= th
 }
 
-tuple<float, float> DecisionTreeClassifier::compute_threshold(const TrainMatrix &X,
+tuple<float, float, int> DecisionTreeClassifier::compute_threshold(const TrainMatrix &X,
                                                                    const vector<int> &y,
                                                                    const int start, const int end, const int f,
                                                                    const unordered_map<int, int> &label_counts,
@@ -252,6 +250,7 @@ tuple<float, float> DecisionTreeClassifier::compute_threshold(const TrainMatrix 
     float best_impurity = numeric_limits<float>::max();
     float prev_impurity = numeric_limits<float>::max();
     float impurity_tol = 1e-4;
+    int best_split_point = start;
 
     vector<int> left_counts, right_counts;
     left_counts.resize(num_classes);
@@ -298,6 +297,7 @@ tuple<float, float> DecisionTreeClassifier::compute_threshold(const TrainMatrix 
         if (weighted_impurity < best_impurity) {
             best_impurity = weighted_impurity;
             best_threshold = threshold;
+            best_split_point = start + left_total;
         }
 
         const float impurity_delta = abs(weighted_impurity - prev_impurity);
@@ -313,7 +313,7 @@ tuple<float, float> DecisionTreeClassifier::compute_threshold(const TrainMatrix 
 
     timer.stop("treshold: main");
 
-    return std::move(tuple{best_threshold, best_impurity});
+    return std::move(tuple{best_threshold, best_impurity, best_split_point});
 }
 
 float DecisionTreeClassifier::gini(const vector<int> &counts, const int total) {

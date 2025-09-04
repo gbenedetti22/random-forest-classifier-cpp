@@ -80,14 +80,12 @@ void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<i
         }
 
         DecisionTreeClassifier tree(params.split_criteria, params.min_samples_split, params.max_features,
-                                    dist(master_rng), params.min_samples_ratio, params.nworkers);
+                                    8, params.min_samples_ratio, params.nworkers);
 
         if (params.bootstrap) {
             vector<int> indices;
 
-            timer.start("bootstrap");
             bootstrap_sample(X.size(), indices);
-            timer.stop("bootstrap");
 
             tree.train(X, y, indices, false);
         } else {

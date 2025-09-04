@@ -5,16 +5,12 @@
 #ifndef DECISIONTREECLASSIFIER_H
 #define DECISIONTREECLASSIFIER_H
 #include <unordered_map>
-#include <optional>
 #include <random>
-#include <utility>
 #include <vector>
 #include <string>
 #include <variant>
 
 #include "TrainMatrix.hpp"
-#include "utils.h"
-#include "Eigen/Cholesky"
 
 using SplitResult = std::tuple<std::vector<int>, std::vector<int>>;
 struct TreeNode {
@@ -36,7 +32,7 @@ class DecisionTreeClassifier {
     void build_tree(TrainMatrix &X, std::vector<int> &y);
 
     static int split_left_right(TrainMatrix &X, std::vector<int> &y, int start, int end, float th, int f);
-    std::tuple<float, float> compute_threshold(const TrainMatrix &X,
+    std::tuple<float, float, int> compute_threshold(const TrainMatrix &X,
                                                     const std::vector<int> &y, int start, int end, int f, const std::unordered_map<int, int> &label_counts, int
                                                     num_classes) const;
     static int compute_majority_class(const std::unordered_map<int, int> &counts);
