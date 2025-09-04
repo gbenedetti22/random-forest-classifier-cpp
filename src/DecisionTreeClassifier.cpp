@@ -15,34 +15,47 @@
 #include <ranges>
 #include <stack>
 #include <tuple>
-#include <tuple>
-#include <tuple>
 #include "../include/Timer.h"
 #include "../include/radix_sort_indices.h"
 #include "../include/splitters/SplitterFF.hpp"
 #include "splitters/SequentialSplitter.hpp"
-#include <Eigen/Core>
+#include <half.hpp>
 #include <pdqsort.h>
 
+#include "TrainMatrix.hpp"
+
 using namespace std;
+using half_float::half;
 
-void DecisionTreeClassifier::train(const vector<vector<float> > &X, const vector<int> &y, const vector<int> &indices) {
-    const int n_samples = indices.size();
-    const int n_features = X[0].size();
+void DecisionTreeClassifier::train(const vector<vector<float> > &X, const vector<int> &y, const vector<int> &indices, bool fp16) {
+    // const int n_samples = indices.size();
+    // const int n_features = X[0].size();
+    //
+    // vector X_transposed(n_features, vector<float>(n_samples));
+    // vector<int> y_train(n_samples);
+    //
+    // for (int i = 0; i < n_samples; ++i) {
+    //     const int idx = indices[i];
+    //
+    //     for (int f = 0; f < n_features; ++f) {
+    //         if (fp16) {
+    //             X_transposed[f][i] = static_cast<half>(X[idx][f]);
+    //         }else {
+    //             X_transposed[f][i] = X[idx][f];
+    //         }
+    //     }
+    //     y_train[i] = y[idx];
+    // }
 
-    vector X_transposed(n_features, vector<float>(n_samples));
-    vector<int> y_train(n_samples);
+    TrainMatrix X_train(X, indices);
+    vector<int> y_train;
+    y_train.reserve(indices.size());
 
-    for (int i = 0; i < n_samples; ++i) {
-        const int idx = indices[i];
-
-        for (int f = 0; f < n_features; ++f) {
-            X_transposed[f][i] = X[idx][f];
-        }
-        y_train[i] = y[idx];
+    for (const int idx : indices) {
+        y_train.push_back(y[idx]);
     }
 
-    build_tree(X_transposed, y_train);
+    build_tree(X_train, y_train);
 }
 
 int DecisionTreeClassifier::predict(const vector<float> &x) const {
@@ -56,11 +69,11 @@ int DecisionTreeClassifier::predict(const vector<float> &x) const {
     return node->predicted_class;
 }
 
-void DecisionTreeClassifier::build_tree(vector<vector<float> > &X, vector<int> &y) {
+void DecisionTreeClassifier::build_tree(TrainMatrix &X, vector<int> &y) {
     root = new TreeNode();
 
-    const int total_features = static_cast<int>(X.size());
-    const int total_samples = static_cast<int>(X[0].size());
+    const int total_features = X.nFeatures();
+    const int total_samples = X.nSamples();
     unordered_map<string, int> op_value = {{"sqrt", sqrt(total_features)}, {"log2", log2(total_features)}};
 
     // Stack now stores ranges (start, end) instead of indices
@@ -132,7 +145,7 @@ void DecisionTreeClassifier::build_tree(vector<vector<float> > &X, vector<int> &
 
         for (const int f: selected_features) {
             timer.start("threshold");
-            auto [threshold, impurity, split_point] = compute_threshold(X, y, start, end, f, label_counts, num_classes);
+            auto [threshold, impurity] = compute_threshold(X, y, start, end, f, label_counts, num_classes);
             timer.stop("threshold");
 
             if (impurity < best_impurity) {
@@ -187,36 +200,27 @@ void DecisionTreeClassifier::build_tree(vector<vector<float> > &X, vector<int> &
     }
 }
 
-int DecisionTreeClassifier::split_left_right(vector<vector<float> > &X,
+int DecisionTreeClassifier::split_left_right(TrainMatrix &X,
                                              vector<int> &y,
-                                             int start, int end,
+                                             const int start, const int end,
                                              const float th,
                                              const int f) {
-    // Partition the samples in-place within the range [start, end)
-    // Elements < th go to the left, elements >= th go to the right
-    // Return the split point (first element >= th)
-
     int left = start;
     int right = end - 1;
 
     while (left <= right) {
-        // Find first element >= th from left
-        while (left <= right && X[f][left] < th) {
+        while (left <= right && X.getValue(f, left) < th) {
             left++;
         }
 
-        // Find first element < th from right
-        while (left <= right && X[f][right] >= th) {
+        while (left <= right && X.getValue(f, right) >= th) {
             right--;
         }
 
-        // Swap if we found elements to swap
         if (left < right) {
-            // Swap the feature values for all features
-            for (int feature = 0; feature < X.size(); ++feature) {
-                swap(X[feature][left], X[feature][right]);
+            for (int feature = 0; feature < X.nFeatures(); ++feature) {
+                swap(X(feature, left), X(feature, right));
             }
-            // Swap the labels
             swap(y[left], y[right]);
             left++;
             right--;
@@ -226,9 +230,9 @@ int DecisionTreeClassifier::split_left_right(vector<vector<float> > &X,
     return left; // left points to first element >= th
 }
 
-tuple<float, float, int> DecisionTreeClassifier::compute_threshold(const vector<vector<float> > &X,
+tuple<float, float> DecisionTreeClassifier::compute_threshold(const TrainMatrix &X,
                                                                    const vector<int> &y,
-                                                                   int start, int end, const int f,
+                                                                   const int start, const int end, const int f,
                                                                    const unordered_map<int, int> &label_counts,
                                                                    const int num_classes) const {
     // Create a temporary vector for the current range
@@ -236,11 +240,11 @@ tuple<float, float, int> DecisionTreeClassifier::compute_threshold(const vector<
     temp_data.reserve(end - start);
 
     for (int i = start; i < end; ++i) {
-        temp_data.emplace_back(X[f][i], i);
+        temp_data.emplace_back(X.getValue(f, i), i);
     }
 
     timer.start("treshold: sorting");
-    // sort(temp_data.begin(), temp_data.end());
+    // pdqsort(temp_data.begin(), temp_data.end());
     RADIX_SORT_PAIRS(temp_data);
     timer.stop("treshold: sorting");
 
@@ -248,7 +252,6 @@ tuple<float, float, int> DecisionTreeClassifier::compute_threshold(const vector<
     float best_impurity = numeric_limits<float>::max();
     float prev_impurity = numeric_limits<float>::max();
     float impurity_tol = 1e-4;
-    int best_split_point = start;
 
     vector<int> left_counts, right_counts;
     left_counts.resize(num_classes);
@@ -295,7 +298,6 @@ tuple<float, float, int> DecisionTreeClassifier::compute_threshold(const vector<
         if (weighted_impurity < best_impurity) {
             best_impurity = weighted_impurity;
             best_threshold = threshold;
-            best_split_point = start + left_total;
         }
 
         const float impurity_delta = abs(weighted_impurity - prev_impurity);
@@ -311,7 +313,7 @@ tuple<float, float, int> DecisionTreeClassifier::compute_threshold(const vector<
 
     timer.stop("treshold: main");
 
-    return std::move(tuple{best_threshold, best_impurity, best_split_point});
+    return std::move(tuple{best_threshold, best_impurity});
 }
 
 float DecisionTreeClassifier::gini(const vector<int> &counts, const int total) {
@@ -368,7 +370,6 @@ vector<int> DecisionTreeClassifier::sample_features(const int total_features, co
 }
 
 int DecisionTreeClassifier::compute_majority_class(const unordered_map<int, int> &counts) {
-    timer.start("majority");
     int majority_class = -1, max_count = -1;
     for (const auto &[label, count]: counts) {
         if (count > max_count) {
@@ -376,6 +377,5 @@ int DecisionTreeClassifier::compute_majority_class(const unordered_map<int, int>
             majority_class = label;
         }
     }
-    timer.stop("majority");
     return majority_class;
 }

@@ -22,7 +22,7 @@ void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, const p
     // fit(flat, y, {X.size(), X[0].size()});
 }
 
-void RandomForestClassifier::fit(vector<vector<float> > &X, const vector<int> &y) {
+void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<int> &y) {
     if (X.empty() || y.empty()) {
         cerr << "Cannot build the tree on dataset" << endl;
         exit(EXIT_FAILURE);
@@ -39,6 +39,16 @@ void RandomForestClassifier::fit(vector<vector<float> > &X, const vector<int> &y
     int num_trees = trees.capacity();
     int rank, size;
     timer.set_active(false);
+    mt19937 master_rng;
+
+    if (params.random_seed.has_value()) {
+        master_rng.seed(*params.random_seed);
+    }else {
+        random_device rd;
+        master_rng.seed(rd());
+    }
+    uniform_int_distribution dist;
+    bernoulli_distribution bd(0.4);
 
     if (params.mpi) {
 #ifdef MPI_AVAILABLE
@@ -70,7 +80,7 @@ void RandomForestClassifier::fit(vector<vector<float> > &X, const vector<int> &y
         }
 
         DecisionTreeClassifier tree(params.split_criteria, params.min_samples_split, params.max_features,
-                                    params.random_seed, params.min_samples_ratio, params.nworkers);
+                                    dist(master_rng), params.min_samples_ratio, params.nworkers);
 
         if (params.bootstrap) {
             vector<int> indices;
@@ -79,12 +89,12 @@ void RandomForestClassifier::fit(vector<vector<float> > &X, const vector<int> &y
             bootstrap_sample(X.size(), indices);
             timer.stop("bootstrap");
 
-            tree.train(X, y, indices);
+            tree.train(X, y, indices, false);
         } else {
             vector<int> indices(X.size());
 
             iota(indices.begin(), indices.end(), 0);
-            tree.train(X, y, indices);
+            tree.train(X, y, indices, false);
         }
 
 #pragma omp critical

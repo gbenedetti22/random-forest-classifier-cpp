@@ -228,28 +228,28 @@ vector<pair<int,int>> threads_ratio_2 = {
 int main() {
     cout << "Loading dataset.." << endl;
     auto [X, y] = Dataset::load("susy", "../dataset");
+    
+     auto [X_train, y_train, X_test, y_test] =
+         Dataset::train_test_split(X, y, 0.7);
+    
+     cout << "Training set size: " << X_train.size() << endl;
+     cout << "Test set size: " << X_test.size() << endl << endl;
 
-    auto [X_train, y_train, X_test, y_test] =
-        Dataset::train_test_split(X, y, 0.7);
+     cout << "Training start " << endl;
+     RandomForestClassifier model({.n_trees = 1, .random_seed = 8, .njobs = 1, .nworkers = 1});
+    
+     const auto start = chrono::steady_clock::now();
+     model.fit(X_train, y_train);
+     const auto end = chrono::steady_clock::now();
+    
+     cout << "Training end! :)" << endl;
+     print_duration(end - start);
+     cout << endl << endl;
+    
+     auto [accuracy, f1] = model.evaluate(X_test, y_test);
+     cout << "Accuracy: " << accuracy << endl;
+     cout << "F1 (Macro): " << f1 << endl;
 
-    cout << "Training set size: " << X_train.size() << endl;
-    cout << "Test set size: " << X_test.size() << endl << endl;
-
-    cout << "Training start " << endl;
-    RandomForestClassifier model({.n_trees = 10, .random_seed = 8, .njobs = -1, .nworkers = 1});
-
-    const auto start = chrono::steady_clock::now();
-    model.fit(X_train, y_train);
-    const auto end = chrono::steady_clock::now();
-
-    cout << "Training end! :)" << endl;
-    print_duration(end - start);
-    cout << endl << endl;
-
-    auto [accuracy, f1] = model.evaluate(X_test, y_test);
-    cout << "Accuracy: " << accuracy << endl;
-    cout << "F1 (Macro): " << f1 << endl;
-
-    timer.summary();
+     timer.summary();
     return 0;
 }

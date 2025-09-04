@@ -17,6 +17,7 @@ add_library(libs
         src/Timer.cpp
         include/splitters/SplitterMP.hpp
         include/splitters/SplitterFF.hpp
+        include/TrainMatrix.hpp
 )
 
 target_include_directories(libs PUBLIC
