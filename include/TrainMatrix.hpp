@@ -7,17 +7,12 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
-#include <iostream>
-#include <limits>
 #include <stdexcept>
 #include <vector>
+#include <array>
 
 class TrainMatrix {
 public:
-    TrainMatrix(const int rows, const int cols) {
-        data.assign(rows, std::vector<uint8_t>(cols));
-    }
-
     explicit TrainMatrix(const std::vector<std::vector<float>>& X, const std::vector<int> &indices) {
         if (X.empty() || X[0].empty())
             throw std::invalid_argument("Matrice vuota!");
@@ -28,20 +23,31 @@ public:
         data.assign(n_features, std::vector<uint8_t>(n_samples));
 
         minVals.resize(n_features);
-        maxVals.resize(n_features);
+        ranges.resize(n_features);
         std::vector<float> X_transposed(n_samples, 0);
 
         for (int f = 0; f < n_features; ++f) {
             int offset = 0;
+            float min = std::numeric_limits<float>::max();
+            float max = std::numeric_limits<float>::min();
+
             for (const int idx: indices) {
-                X_transposed[offset] = X[idx][f];
+                const float value = X[idx][f];
+
+                X_transposed[offset] = value;
                 offset++;
+
+                if (value < min) {
+                    min = value;
+                }
+
+                if (value > max) {
+                    max = value;
+                }
             }
 
-            auto [min, max] = std::ranges::minmax(X_transposed);
-
             minVals[f] = min;
-            maxVals[f] = max;
+            ranges[f] = max - min;
 
             const float range = std::max(max - min, 1.0f);
 
@@ -51,7 +57,6 @@ public:
                 data[f][i] = q;
             }
         }
-
 
     }
 
@@ -72,10 +77,13 @@ public:
     }
 
     [[nodiscard]] float getApprox(const int i, const int j) const {
-        const float minVal = minVals[i];
-        const float maxVal = maxVals[i];
         const float norm = static_cast<float>(data[i][j]) / 255.0f;
-        return norm * (maxVal - minVal) + minVal;
+        return norm * ranges[i] + minVals[i];
+    }
+
+    [[nodiscard]] float toValue(const int f, const uint8_t rawValue) const {
+        const float norm = static_cast<float>(rawValue) / 255.0f;
+        return norm * ranges[f] + minVals[f];
     }
 
     [[nodiscard]] int rows() const { return data.size(); }
@@ -86,7 +94,7 @@ public:
 
 private:
     std::vector<std::vector<uint8_t>> data;
+    std::vector<float> ranges;
     std::vector<float> minVals;
-    std::vector<float> maxVals;
 };
 #endif //DECISION_TREE_TRAINMATRIX_HPP

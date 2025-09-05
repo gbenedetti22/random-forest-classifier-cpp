@@ -19,13 +19,11 @@
 #include "../include/radix_sort_indices.h"
 #include "../include/splitters/SplitterFF.hpp"
 #include "splitters/SequentialSplitter.hpp"
-#include <half.hpp>
 #include <pdqsort.h>
 
 #include "TrainMatrix.hpp"
 
 using namespace std;
-using half_float::half;
 
 void DecisionTreeClassifier::train(const vector<vector<float> > &X, const vector<int> &y, const vector<int> &indices, bool fp16) {
     // const int n_samples = indices.size();
@@ -120,7 +118,6 @@ void DecisionTreeClassifier::build_tree(TrainMatrix &X, vector<int> &y) {
 
         int num_classes = 1;
 
-        timer.start("label counts");
         unordered_map<int, int> label_counts;
         for (int i = start; i < end; ++i) {
             label_counts[y[i]]++;
@@ -128,7 +125,6 @@ void DecisionTreeClassifier::build_tree(TrainMatrix &X, vector<int> &y) {
                 num_classes = y[i];
             }
         }
-        timer.stop("label counts");
 
         if (label_counts.size() == 1 || (end - start) < min_samples_split) {
             node->is_leaf = true;
@@ -233,17 +229,15 @@ tuple<float, float, int> DecisionTreeClassifier::compute_threshold(const TrainMa
                                                                    const int start, const int end, const int f,
                                                                    const unordered_map<int, int> &label_counts,
                                                                    const int num_classes) const {
-    // Create a temporary vector for the current range
-    vector<pair<float, int> > temp_data;
+    vector<pair<uint8_t, int> > temp_data;
     temp_data.reserve(end - start);
 
     for (int i = start; i < end; ++i) {
-        temp_data.emplace_back(X.getValue(f, i), i);
+        temp_data.emplace_back(X(f, i), i);
     }
 
     timer.start("treshold: sorting");
-    // pdqsort(temp_data.begin(), temp_data.end());
-    RADIX_SORT_PAIRS(temp_data);
+    RADIX_SORT_PAIRS_UINT8(temp_data);
     timer.stop("treshold: sorting");
 
     float best_threshold = 0.0;
@@ -279,8 +273,8 @@ tuple<float, float, int> DecisionTreeClassifier::compute_threshold(const TrainMa
             right_total--;
         }
 
-        const float current_val = temp_data[i].first;
-        const float next_val = temp_data[i + 1].first;
+        const float current_val = X.toValue(f, temp_data[i].first);
+        const float next_val = X.toValue(f, temp_data[i + 1].first);
 
         if (current_val == next_val) continue;
 
