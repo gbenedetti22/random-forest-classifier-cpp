@@ -66,7 +66,7 @@ namespace radix_sort_detail {
     }
 
     // Radix sort ottimizzato per vector<pair<float, int>>
-    void radix_sort_pairs_impl(std::vector<std::pair<float, int>> &values) {
+    inline void radix_sort_pairs_impl(std::vector<std::pair<float, int> > &values) {
         const int n = values.size();
         if (n <= 1) return;
 
@@ -92,13 +92,10 @@ namespace radix_sort_detail {
         }
     }
 
-    // ======== NUOVA VERSIONE OTTIMIZZATA PER uint8_t ========
-
-    // Adatta il tuo counting sort esistente per uint8_t
-    void counting_sort_uint8(std::vector<std::pair<uint8_t, int>> &pairs,
-                            std::vector<std::pair<uint8_t, int>> &temp_pairs) {
+    inline void counting_sort_uint8(std::vector<std::pair<uint8_t, int> > &pairs,
+                                    std::vector<std::pair<uint8_t, int> > &temp_pairs) {
         constexpr int RADIX = 256;
-        int counts[RADIX] = {0};
+        int counts[RADIX] = {};
 
         // Conta le occorrenze
         const int n = pairs.size();
@@ -123,29 +120,67 @@ namespace radix_sort_detail {
         std::swap(pairs, temp_pairs);
     }
 
+    template<typename KeyFunc, typename ValueFunc>
+void counting_sort_callback(
+    const KeyFunc& getKey,
+    const ValueFunc& getValue,
+    const int n,
+    std::vector<std::pair<uint8_t, int>>& output
+) {
+        constexpr int RADIX = 256;
+        int counts[RADIX] = {};
+        output.resize(n);
+
+        std::vector<uint8_t> keys(n);
+
+        for (size_t i = 0; i < n; ++i) {
+            keys[i] = getKey(i);
+            ++counts[keys[i]];
+        }
+
+        size_t pos[RADIX];
+        pos[0] = 0;
+        for (int i = 1; i < RADIX; ++i) {
+            pos[i] = pos[i - 1] + counts[i - 1];
+        }
+
+        for (int i = 0; i < n; ++i) {
+            const uint8_t key = keys[i];
+            output[pos[key]++] = std::pair{key, getValue(i)};
+        }
+    }
+
     // Radix sort per uint8_t - usa lo stesso pattern del tuo codice esistente
-    void radix_sort_pairs_uint8_impl(std::vector<std::pair<uint8_t, int>> &values) {
+    inline void radix_sort_pairs_uint8_impl(std::vector<std::pair<uint8_t, int>> &values) {
         const int n = values.size();
         if (n <= 1) return;
 
         // Per uint8_t non serve PairWithKey perché la chiave È già uint8_t
         // Buffer temporaneo per il counting sort
-        std::vector<std::pair<uint8_t, int>> temp_pairs(n);
+        std::vector<std::pair<uint8_t, int> > temp_pairs(n);
 
         // Una sola passata perché uint8_t è già un singolo byte
         counting_sort_uint8(values, temp_pairs);
     }
-
 } // namespace radix_sort_detail
 
 // Funzione principale per ordinare vector<pair<float, int>> per il valore float
-inline void radix_sort_pairs(std::vector<std::pair<float, int>> &values) {
+inline void radix_sort_pairs(std::vector<std::pair<float, int> > &values) {
     radix_sort_detail::radix_sort_pairs_impl(values);
 }
 
 // Nuova funzione per uint8_t
-inline void radix_sort_pairs_uint8(std::vector<std::pair<uint8_t, int>> &values) {
+inline void radix_sort_pairs_uint8(std::vector<std::pair<uint8_t, int> > &values) {
     radix_sort_detail::radix_sort_pairs_uint8_impl(values);
+}
+
+inline void counting_sort_callback(
+        const std::function<uint8_t(int)>& getKey,
+        const std::function<int(int)>& getValue,
+        const int n,
+        std::vector<std::pair<uint8_t, int> > &temp_pairs
+    ) {
+    radix_sort_detail::counting_sort_callback(getKey, getValue, n, temp_pairs);
 }
 
 #define RADIX_SORT_PAIRS(pairs) \
@@ -153,5 +188,8 @@ inline void radix_sort_pairs_uint8(std::vector<std::pair<uint8_t, int>> &values)
 
 #define RADIX_SORT_PAIRS_UINT8(pairs) \
     radix_sort_pairs_uint8(pairs)
+
+#define COUNTING_SORT_CALLBACK(getKey, getValue, n, output) \
+    counting_sort_callback(getKey, getValue, n, output)
 
 #endif //RADIX_SORT_INDICES_H

@@ -100,7 +100,7 @@ public:
 
         table[0].format().border_bottom("─");
 
-        std::cout << "--- Sommario Timer ---\n";
+        std::cout << std::endl << "--- Sommario Timer ---" << std::endl;
         std::cout << table << std::endl;
     }
 

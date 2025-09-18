@@ -3,20 +3,22 @@ project(decision_tree)
 
 set(CMAKE_CXX_STANDARD 23)
 
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -march=native -funroll-loops -ffast-math")
+#set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS} -O0")
+#set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS} -O0")
+set(CMAKE_CXX_FLAGS_RELEASE "-O3 -ftree-vectorize -fno-math-errno -fno-trapping-math -freciprocal-math")
+
 
 find_package(OpenMP REQUIRED)
 find_package(MPI QUIET)
+find_package(TBB REQUIRED COMPONENTS tbb)
 
 add_library(libs
         src/Dataset.cpp
         src/RandomForestClassifier.cpp
         src/DecisionTreeClassifier.cpp
         src/Timer.cpp
-        include/splitters/SplitterMP.hpp
         include/splitters/SplitterFF.hpp
+        include/splitters/SplitterMP.hpp
         include/TrainMatrix.hpp
 )
 
@@ -24,17 +26,15 @@ target_include_directories(libs PUBLIC
         ${CMAKE_SOURCE_DIR}/include
         ${CMAKE_SOURCE_DIR}/eigen
 )
-add_subdirectory(external/matplotplusplus)
 
 target_link_libraries(libs PUBLIC OpenMP::OpenMP_CXX)
+target_link_libraries(libs PRIVATE TBB::tbb)
 
 add_executable(main main.cpp)
 target_link_libraries(main PRIVATE libs)
-target_link_libraries(main PRIVATE matplot)
 
 add_executable(mpi main_mpi.cpp)
 target_link_libraries(mpi PRIVATE libs)
-target_link_libraries(mpi PRIVATE matplot)
 
 add_executable(test test.cpp)
 target_link_libraries(test PRIVATE libs)

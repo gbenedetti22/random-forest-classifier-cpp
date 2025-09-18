@@ -6,6 +6,7 @@
 
 #include <cassert>
 #include <iostream>
+#include <memory>
 #include <omp.h>
 #include <Eigen/Dense>
 
@@ -17,12 +18,12 @@
 #include "../include/Timer.h"
 using namespace std;
 
-void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, const pair<int, int> &shape) {
-    // vector<float> flat = flatten(X);
-    // fit(flat, y, {X.size(), X[0].size()});
+void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<int> &y) {
+    const vector<float> flat = flatten(X);
+    fit(flat, y, {X.size(), X[0].size()});
 }
 
-void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<int> &y) {
+void RandomForestClassifier::fit(const vector<float> &X, const vector<int> &y, const pair<size_t, size_t> &shape) {
     if (X.empty() || y.empty()) {
         cerr << "Cannot build the tree on dataset" << endl;
         exit(EXIT_FAILURE);
@@ -33,22 +34,22 @@ void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<i
     }
 
     num_classes = ranges::max(y) + 1;
+    const size_t rows = shape.first;
 
     const int t = params.njobs;
     int threads_count = t == -1 ? omp_get_max_threads() : t;
-    int num_trees = trees.capacity();
+    int num_trees = params.n_trees;
     int rank, size;
     timer.set_active(false);
-    mt19937 master_rng;
+    int master_seed = rand();
 
     if (params.random_seed.has_value()) {
-        master_rng.seed(*params.random_seed);
-    }else {
-        random_device rd;
-        master_rng.seed(rd());
+        master_seed = *params.random_seed;
     }
-    uniform_int_distribution dist;
-    bernoulli_distribution bd(0.4);
+
+    seed_seq seq{ master_seed };
+    vector<uint32_t> seeds(num_trees);
+    seq.generate(seeds.begin(), seeds.end());
 
     if (params.mpi) {
 #ifdef MPI_AVAILABLE
@@ -72,27 +73,27 @@ void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<i
             if (params.mpi) {
                 const int global_idx = rank * num_trees + i;
                 cout << "Rank: " << rank << " - Thread " << omp_get_thread_num() + 1 << "/" << omp_get_num_threads()
-                    << ": Training tree n. " << global_idx + 1 << endl;
+                    << ": Training tree n. " << global_idx + 1 << "\n";
             }else {
                 cout << "Thread " << omp_get_thread_num() + 1 << "/" << omp_get_num_threads()
-                    << ": Training tree n. " << i + 1 << endl;
+                    << ": Training tree n. " << i + 1 << "\n";
             }
         }
 
-        DecisionTreeClassifier tree(params.split_criteria, params.min_samples_split, params.max_features,
-                                    8, params.min_samples_ratio, params.nworkers);
+        auto tree = DecisionTreeClassifier(params.split_criteria, params.min_samples_split, params.max_features,
+                                    seeds[i], params.min_samples_ratio, params.nworkers);
 
         if (params.bootstrap) {
             vector<int> indices;
 
-            bootstrap_sample(X.size(), indices);
+            bootstrap_sample(rows, indices);
 
-            tree.train(X, y, indices, false);
+            tree.train(X, shape, y, indices);
         } else {
             vector<int> indices(X.size());
 
             iota(indices.begin(), indices.end(), 0);
-            tree.train(X, y, indices, false);
+            tree.train(X, shape, y, indices);
         }
 
 #pragma omp critical
@@ -109,8 +110,12 @@ int RandomForestClassifier::predict(const vector<float> &x) const {
     int threads_count = t == -1 ? omp_get_max_threads() : t;
 
 #pragma omp parallel for if(threads_count > 1) num_threads(threads_count)
-    for (int i = 0; i < trees.size(); i++) {
+    for (size_t i = 0; i < trees.size(); i++) {
         const int pred = trees[i].predict(x);
+        if (pred < 0 || pred >= num_classes) {
+            cerr << "Warning: prediction " << pred << " is outside range [0, " << num_classes-1 << "]" << endl;
+            continue;
+        }
 #pragma omp atomic
         vote_counts[pred]++;
     }
@@ -153,7 +158,7 @@ int RandomForestClassifier::predict(const vector<float> &x) const {
     return majority_class;
 }
 
-pair<float, float> RandomForestClassifier::evaluate(const vector<vector<float>> &X, const vector<int> &y) const {
+pair<float, float> RandomForestClassifier::score(const vector<vector<float>> &X, const vector<int> &y) const {
     int classified = 0;
     vector<int> y_pred;
     y_pred.reserve(X.size());
@@ -182,7 +187,7 @@ pair<float, float> RandomForestClassifier::evaluate(const vector<vector<float>> 
         vector<int> y_pred_final;
         y_pred_final.reserve(X.size());
 
-        for (int i = 0; i < X.size(); ++i) {
+        for (size_t i = 0; i < X.size(); ++i) {
             unordered_map<int,int> votes;
             for (int r = 0; r < size; ++r) {
                 int pred = y_pred_total[r * X.size() + i];
@@ -207,7 +212,7 @@ pair<float, float> RandomForestClassifier::evaluate(const vector<vector<float>> 
     }
 
 
-    for (int i = 0; i < X.size(); ++i) {
+    for (size_t i = 0; i < X.size(); ++i) {
         int prediction = predict(X[i]);
         y_pred.push_back(prediction);
 
@@ -229,7 +234,7 @@ float RandomForestClassifier::f1_score(const vector<int> &y, const vector<int> &
     vector FP(numClasses, 0);
     vector FN(numClasses, 0);
 
-    for (int i = 0; i < y_pred.size(); ++i) {
+    for (size_t i = 0; i < y_pred.size(); ++i) {
         const int pred = y_pred[i];
         const int trueLabel = y[i];
 
@@ -261,7 +266,7 @@ float RandomForestClassifier::f1_score(const vector<int> &y, const vector<int> &
 }
 
 
-void RandomForestClassifier::bootstrap_sample(const int n_samples, vector<int> &indices) const {
+void RandomForestClassifier::bootstrap_sample(const size_t n_samples, vector<int> &indices) const {
     indices.clear();
     indices.reserve(n_samples);
 
@@ -271,8 +276,8 @@ void RandomForestClassifier::bootstrap_sample(const int n_samples, vector<int> &
         srand(time(nullptr));
     }
 
-    for (int i = 0; i < n_samples; ++i) {
-        const int idx = rand() % n_samples;
+    for (size_t i = 0; i < n_samples; ++i) {
+        const int idx = rand() % static_cast<int>(n_samples);
 
         indices.push_back(idx);
     }
