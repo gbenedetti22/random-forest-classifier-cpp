@@ -50,8 +50,13 @@ void Dataset::process_line(vector<vector<float>>& X, vector<int>& y, const strin
         size_t start = 0;
         size_t end = line.find(',');
 
-        int label;
-        from_chars(line.data() + start, line.data() + end, label);
+        int label = 0;
+        auto [ptr_lbl, ec_lbl] = from_chars(line.data() + start, line.data() + end, label);
+        (void)ptr_lbl;
+        if (ec_lbl != errc()) {
+            // Fallback: treat unparsable label as 0
+            label = 0;
+        }
         y.push_back(label);
 
         vector<float> features;
@@ -60,8 +65,15 @@ void Dataset::process_line(vector<vector<float>>& X, vector<int>& y, const strin
         while (end != string::npos) {
             start = end + 1;
             end = line.find(',', start);
-            float val;
-            from_chars(line.data() + start, line.data() + (end == string::npos ? line.size() : end), val);
+            float val = 0.0f;
+            auto [ptr_val, ec_val] = from_chars(line.data() + start,
+                                                line.data() + (end == string::npos ? line.size() : end),
+                                                val);
+            (void)ptr_val;
+            if (ec_val != errc()) {
+                // If parsing fails, default to 0.0f
+                val = 0.0f;
+            }
             features.push_back(val);
         }
 
@@ -122,7 +134,7 @@ pair<vector<vector<float> >, vector<int>> Dataset::load(string filename,
     vector<vector<float>> features;
     vector<int> labels;
     unordered_map<string, int> labels_mapping;
-    int label_id;
+    int label_id = 0;
 
     for (size_t i = 0; i < filesize && line_count < max_lines; ++i) {
         if (data[i] == '\n' || i == filesize - 1) {

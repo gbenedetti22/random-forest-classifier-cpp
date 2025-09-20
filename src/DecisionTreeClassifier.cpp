@@ -23,6 +23,18 @@
 
 using namespace std;
 
+static void destroy_tree(const TreeNode* node) {
+    if (!node) return;
+    destroy_tree(node->left);
+    destroy_tree(node->right);
+    delete node;
+}
+
+DecisionTreeClassifier::~DecisionTreeClassifier() {
+    destroy_tree(root);
+    root = nullptr;
+}
+
 void DecisionTreeClassifier::train(const vector<float> &X, const pair<long, long>& shape, const vector<int> &y, vector<int> &indices) {
     timer.start("matrix");
     TrainMatrix X_train(X, shape, indices);
@@ -113,27 +125,6 @@ void DecisionTreeClassifier::build_tree(TrainMatrix &X, vector<int> &y) {
 
         assert(n_features > 0 && "Invalid max_feature parameter");
         vector<int> selected_features = sample_features(total_features, static_cast<size_t>(n_features));
-
-        // float best_impurity = std::numeric_limits<float>::max();
-        // float best_threshold = 0.0f;
-        // int best_feature = -1;
-
-        // for (const int f : selected_features) {
-        //     auto [threshold, impurity, split_point] = compute_threshold(X, y, start, end, f, label_counts, num_classes);
-        //
-        //     if (impurity < best_impurity) {
-        //         size_t total_left = split_point - start;
-        //         size_t total_right = end - split_point;
-        //         const float ratio = static_cast<float>(min(total_left, total_right)) /
-        //                             static_cast<float>(end - start);
-        //
-        //         if (ratio > min_samples_ratio) {
-        //             best_impurity = impurity;
-        //             best_feature = f;
-        //             best_threshold = threshold;
-        //         }
-        //     }
-        // }
 
         const SplitterResult best_split = splitter->find_best_split(
             X, y, start, end, selected_features, label_counts, num_classes, min_samples_ratio

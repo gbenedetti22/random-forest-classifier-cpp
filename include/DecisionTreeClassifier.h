@@ -55,6 +55,32 @@ public:
     float min_samples_ratio;
     int nworkers;
 
+    DecisionTreeClassifier(const DecisionTreeClassifier&) = delete;
+    DecisionTreeClassifier& operator=(const DecisionTreeClassifier&) = delete;
+
+    DecisionTreeClassifier(DecisionTreeClassifier&& other) noexcept
+            : root(other.root), rng(other.rng),
+              split_criteria(other.split_criteria),
+              min_samples_split(other.min_samples_split),
+              max_features(other.max_features),
+              min_samples_ratio(other.min_samples_ratio),
+              nworkers(other.nworkers) {
+        other.root = nullptr;
+    }
+
+    DecisionTreeClassifier& operator=(DecisionTreeClassifier&& other) noexcept {
+        if (this != &other) {
+            this->~DecisionTreeClassifier();
+            root = other.root;
+            rng = other.rng;
+            min_samples_split = other.min_samples_split;
+            min_samples_ratio = other.min_samples_ratio;
+            nworkers = other.nworkers;
+            other.root = nullptr;
+        }
+        return *this;
+    }
+
     DecisionTreeClassifier(const std::string &split_criteria, const int min_samples_split, const std::variant<int, std::string> &max_features,
             const unsigned int random_seed, const float min_samples_ratio, const int nworkers)
             : root(nullptr), split_criteria(split_criteria),
@@ -62,6 +88,8 @@ public:
               max_features(max_features), min_samples_ratio(min_samples_ratio), nworkers(nworkers) {
         rng = std::mt19937(random_seed);
     }
+
+    ~DecisionTreeClassifier();
 
     void train(const std::vector<float> &X, const std::pair<long, long> &shape, const std::vector<int> &y, std::vector<int> &indices);
     [[nodiscard]] int predict(const std::vector<float>& x) const;

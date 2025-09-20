@@ -96,9 +96,9 @@ void RandomForestClassifier::fit(const vector<float> &X, const vector<int> &y, c
             tree.train(X, shape, y, indices);
         }
 
-#pragma omp critical
+        #pragma omp critical
         {
-            trees.push_back(tree);
+            trees.push_back(std::move(tree));
         }
     }
 }
