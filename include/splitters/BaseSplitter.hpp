@@ -9,8 +9,8 @@
 
 #include "utils.h"
 
-using ComputeThresholdFn = std::function<std::pair<float, float>(
-    const std::vector<std::vector<float>> &,
+using ComputeThresholdFn = std::function<std::tuple<float, float, size_t>(
+    const TrainMatrix &,
     const std::vector<int> &,
     std::vector<int> &,
     int,
@@ -18,7 +18,7 @@ using ComputeThresholdFn = std::function<std::pair<float, float>(
     int)>;
 
 using SplitLeftRightFn = std::function<std::tuple<std::vector<int>, std::vector<int>>(
-    const std::vector<std::vector<float>> &,
+    const TrainMatrix &,
     const std::vector<int> &,
     float,
     int)>;
@@ -27,14 +27,8 @@ struct SplitterResult {
     float best_impurity = std::numeric_limits<float>::max();
     float best_threshold = 0.0f;
     int best_feature = -1;
-    std::vector<int> left_indices;
-    std::vector<int> right_indices;
 
     SplitterResult() = default;
-
-    SplitterResult(const float imp, const float thresh, const int feat, std::vector<int> left, std::vector<int> right)
-        : best_impurity(imp), best_threshold(thresh), best_feature(feat),
-          left_indices(std::move(left)), right_indices(std::move(right)) {}
 };
 
 class BaseSplitter {
@@ -42,14 +36,12 @@ public:
     virtual ~BaseSplitter() = default;
 
     ComputeThresholdFn compute_threshold_fn;
-    SplitLeftRightFn split_left_right_fn;
 
-    BaseSplitter(ComputeThresholdFn compute_threshold_fn, SplitLeftRightFn split_left_right_fn)
-        : compute_threshold_fn(std::move(compute_threshold_fn)),
-          split_left_right_fn(std::move(split_left_right_fn)) {}
+    explicit BaseSplitter(ComputeThresholdFn compute_threshold_fn)
+        : compute_threshold_fn(std::move(compute_threshold_fn)) {}
 
     virtual SplitterResult find_best_split(
-        const std::vector<std::vector<float>> &X,
+        const TrainMatrix &X,
         const std::vector<int> &y,
         std::vector<int> &indices,
         const std::vector<int> &selected_features,

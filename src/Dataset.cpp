@@ -35,7 +35,7 @@ void Dataset::process_line(vector<vector<float>>& X, vector<int>& y, const strin
 
         vector<float> features;
         for (string &token: tokens) {
-            features.push_back(stod(token));
+            features.push_back(std::stof(token));
         }
 
         if (!labels.contains(label)) {
@@ -50,8 +50,12 @@ void Dataset::process_line(vector<vector<float>>& X, vector<int>& y, const strin
         size_t start = 0;
         size_t end = line.find(',');
 
-        int label;
-        from_chars(line.data() + start, line.data() + end, label);
+        int label = 0;
+        auto [_, e] = from_chars(line.data() + start, line.data() + end, label);
+
+        if (e != errc()) {
+            label = 0;
+        }
         y.push_back(label);
 
         vector<float> features;
@@ -60,12 +64,17 @@ void Dataset::process_line(vector<vector<float>>& X, vector<int>& y, const strin
         while (end != string::npos) {
             start = end + 1;
             end = line.find(',', start);
-            float val;
-            from_chars(line.data() + start, line.data() + (end == string::npos ? line.size() : end), val);
+            float val = 0.0f;
+            auto [_, e] = from_chars(line.data() + start,
+                                                line.data() + (end == string::npos ? line.size() : end),
+                                                val);
+            if (e != errc()) {
+                val = 0.0f;
+            }
             features.push_back(val);
         }
 
-        X.push_back(move(features));
+        X.push_back(std::move(features));
     }
 }
 
@@ -122,7 +131,7 @@ pair<vector<vector<float> >, vector<int>> Dataset::load(string filename,
     vector<vector<float>> features;
     vector<int> labels;
     unordered_map<string, int> labels_mapping;
-    int label_id;
+    int label_id = 0;
 
     for (size_t i = 0; i < filesize && line_count < max_lines; ++i) {
         if (data[i] == '\n' || i == filesize - 1) {

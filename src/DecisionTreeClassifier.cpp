@@ -15,19 +15,36 @@
 #include <ranges>
 #include <stack>
 #include <tuple>
-#include <tuple>
-#include <tuple>
 #include "../include/Timer.h"
 #include "../include/radix_sort_indices.h"
-#include "../include/splitters/SplitterFF.hpp"
-#include "splitters/SequentialSplitter.hpp"
-#include <Eigen/Core>
 #include <pdqsort.h>
+#include <TrainMatrix.hpp>
+
+#include "splitters/BaseSplitter.hpp"
+#include "splitters/HistogramSplitter.hpp"
 
 using namespace std;
 
-void DecisionTreeClassifier::train(const vector<vector<float>> &X, const vector<int> &y, vector<int> &samples) {
-    build_tree(X, y, samples);
+static void destroy_tree(const TreeNode* node) {
+    if (!node) return;
+    destroy_tree(node->left);
+    destroy_tree(node->right);
+    delete node;
+}
+
+DecisionTreeClassifier::~DecisionTreeClassifier() {
+    destroy_tree(root);
+    root = nullptr;
+}
+
+void DecisionTreeClassifier::train(const vector<float> &X, const pair<size_t, size_t>& shape, const vector<int> &y, vector<int> &samples) {
+    pdqsort_branchless(samples.begin(), samples.end());
+
+    timer.start("matrix");
+    const TrainMatrix m(X, shape);
+    timer.stop("matrix");
+
+    build_tree(m, y, samples);
 }
 
 int DecisionTreeClassifier::predict(const vector<float> &x) const {
@@ -41,14 +58,12 @@ int DecisionTreeClassifier::predict(const vector<float> &x) const {
     return node->predicted_class;
 }
 
-void DecisionTreeClassifier::build_tree(const vector<vector<float>> &X, const vector<int> &y, vector<int> &samples) {
+void DecisionTreeClassifier::build_tree(const TrainMatrix &X, const vector<int> &y, vector<int> &samples) {
     root = new TreeNode();
+    int total_nodes = 0;
 
-    const int total_features = static_cast<int>(X[0].size());
+    const size_t total_features = X.nFeatures();
     unordered_map<string, int> op_value = {{"sqrt", sqrt(total_features)}, {"log2", log2(total_features)}};
-
-    stack<tuple<vector<int>, TreeNode *> > stack;
-    stack.emplace(samples, root);
 
     int n_features = 0;
     if (std::holds_alternative<int>(max_features)) {
@@ -58,31 +73,27 @@ void DecisionTreeClassifier::build_tree(const vector<vector<float>> &X, const ve
         n_features = op_value[op];
     }
 
-    auto compute_fn = [this](const vector<vector<float>> &X,
+    auto compute_fn = [this](const TrainMatrix &X,
                          const vector<int> &y,
                          vector<int> &indices,
                          const int f,
                          const unordered_map<int,int> &label_counts,
-                         const int num_classes) -> pair<float,float> {
+                         const int num_classes) -> tuple<float,float,size_t> {
         return this->compute_threshold(X, y, indices, f, label_counts, num_classes);
-    };
-
-    auto split_fn = [](const vector<vector<float>> &X,
-                           const vector<int> &indices,
-                           const float th,
-                           const int f) -> tuple<vector<int>, vector<int>> {
-        return split_left_right(X, indices, th, f);
     };
 
     unique_ptr<BaseSplitter> splitter;
     assert(nworkers > 0 || nworkers == -1);
 
-    if (nworkers == 1) {
-        splitter = make_unique<SequentialSplitter>(compute_fn, split_fn);
-    }else {
-        nworkers = nworkers == -1 ? omp_get_max_threads() : nworkers;
-        splitter = make_unique<SplitterFF>(compute_fn, split_fn, nworkers);
-    }
+    splitter = make_unique<HistogramSplitter>(compute_fn);
+    // if (nworkers == 1) {
+    //     splitter = make_unique<SequentialSplitter>(compute_fn, split_fn);
+    // }else {
+    //     nworkers = nworkers == -1 ? omp_get_max_threads() : nworkers;
+    //     splitter = make_unique<SplitterFF>(compute_fn, split_fn, nworkers);
+    // }
+    stack<tuple<vector<int>, TreeNode *> > stack;
+    stack.emplace(samples, root);
 
     while (!stack.empty()) {
         auto [indices, node] = std::move(stack.top());
@@ -90,7 +101,6 @@ void DecisionTreeClassifier::build_tree(const vector<vector<float>> &X, const ve
 
         int num_classes = 1;
 
-        timer.start("label counts");
         unordered_map<int, int> label_counts;
         for (const int i: indices) {
             label_counts[y[i]]++;
@@ -98,7 +108,6 @@ void DecisionTreeClassifier::build_tree(const vector<vector<float>> &X, const ve
                 num_classes = y[i];
             }
         }
-        timer.stop("label counts");
 
         if (label_counts.size() == 1 || indices.size() < min_samples_split) {
             node->is_leaf = true;
@@ -109,24 +118,27 @@ void DecisionTreeClassifier::build_tree(const vector<vector<float>> &X, const ve
         assert(n_features > 0 && "Invalid max_feature parameter");
         vector<int> selected_features = sample_features(total_features, n_features);
 
+        timer.start("histogram");
         const SplitterResult best_split = splitter->find_best_split(
             X, y, indices, selected_features, label_counts, num_classes, min_samples_ratio
         );
+        timer.stop("histogram");
 
         const int best_feature = best_split.best_feature;
         const float best_threshold = best_split.best_threshold;
-
-        const vector<int>& best_left_X = best_split.left_indices;
-        const vector<int>& best_right_X = best_split.right_indices;
-
         if (best_feature == -1) {
             node->is_leaf = true;
             node->predicted_class = compute_majority_class(label_counts);
             continue;
         }
 
+        timer.start("split");
+        auto [best_left_X, best_right_X] = split_left_right(X, indices, best_threshold, best_feature);
+        timer.stop("split");
+
         auto *left_node = new TreeNode();
         auto *right_node = new TreeNode();
+        total_nodes += 2;
 
         node->is_leaf = false;
         node->feature_index = best_feature;
@@ -137,100 +149,118 @@ void DecisionTreeClassifier::build_tree(const vector<vector<float>> &X, const ve
         stack.emplace(best_left_X, left_node);
         stack.emplace(best_right_X, right_node);
     }
+
+    cout << "Nodes created: " << total_nodes << endl;
 }
 
-tuple<vector<int>, vector<int>> DecisionTreeClassifier::split_left_right(const vector<vector<float>> &X,
+tuple<vector<int>, vector<int>> DecisionTreeClassifier::split_left_right(const TrainMatrix &X,
                                               const vector<int> &indices,
                                               const float th,
                                               const int f) {
-    const auto it = ranges::partition_point(indices, [&X, th, f](const int i) {
-        return X[i][f] < th;
-    });
+    vector<int> left_indices, right_indices;
+    left_indices.reserve(indices.size());
+    right_indices.reserve(indices.size());
 
-    vector left_indices(indices.begin(), it);
-    vector right_indices(it, indices.end());
+    for (const int idx: indices) {
+        if (X(f, idx) < th) {
+            left_indices.push_back(idx);
+        }else {
+            right_indices.push_back(idx);
+        }
+    }
 
     return std::move(tuple{left_indices, right_indices});
 }
 
-pair<float, float> DecisionTreeClassifier::compute_threshold(const vector<vector<float>> &X, const vector<int> &y,
-                                                             vector<int> &indices, const int f,
-                                                             const unordered_map<int, int> &label_counts,
-                                                             const int num_classes) const {
-    timer.start("treshold: sorting");
-    RADIX_SORT_INDICES(indices, X, f);
-    timer.stop("treshold: sorting");
+tuple<float, float, size_t> DecisionTreeClassifier::compute_threshold(const TrainMatrix &X,
+                                                                        const std::vector<int> &y,
+                                                                        const std::vector<int>& indices,
+                                                                        const int f,
+                                                                        const std::unordered_map<int, int> &label_counts,
+                                                                        const int num_classes) const {
+    thread_local std::vector histogram(256, std::vector(num_classes, 0));
+        thread_local int bin_counts[256] = {};
+        thread_local uint8_t active_bins[256];
+        thread_local int active_bins_size = 0;
 
-    float best_threshold = 0.0;
-    float best_impurity = numeric_limits<float>::max();
-    float prev_impurity = numeric_limits<float>::max();
-    float impurity_tol = 1e-4;
-
-    vector<int> left_counts, right_counts;
-    left_counts.resize(num_classes);
-    right_counts.resize(num_classes);
-
-    timer.start("threshold: label counts");
-    for (auto &[label, count]: label_counts) {
-        right_counts[label] = count;
-    }
-    timer.stop("threshold: label counts");
-
-    int left_total = 0;
-    int right_total = static_cast<int>(indices.size());
-    int offset = 1;
-
-    timer.start("treshold: main");
-    for (int i = 0; i < indices.size() - 1; i += offset) {
-        i = min(i, static_cast<int>(indices.size() - 1));
-
-        for (int j = max(0, i - offset + 1); j <= i; ++j) {
-            const int current_idx = indices[j];
-            const int current_label = y[current_idx];
-
-            left_counts[current_label]++;
-            right_counts[current_label]--;
-            left_total++;
-            right_total--;
+        std::ranges::fill(bin_counts, 0);
+        active_bins_size = 0;
+        for (auto& h : histogram) {
+            std::ranges::fill(h, 0);
         }
 
-        const int current_idx = indices[i];
-        const int next_idx = indices[i + 1];
+        timer.start("histogram - creation");
+        for (const int idx : indices) {
+            const uint8_t bin = X.getQuantized(f, idx);
+            const int label = y[idx];
+            if (bin_counts[bin] == 0) {
+                active_bins[active_bins_size++] = bin;
+            }
 
-        const float current_val = X[current_idx][f];
-        const float next_val = X[next_idx][f];
+            histogram[bin][label]++;
+            bin_counts[bin]++;
+        }
+        timer.stop("histogram - creation");
 
-        if (current_val == next_val) continue;
+        pdqsort_branchless(active_bins, active_bins + active_bins_size);
 
-        const float threshold = (current_val + next_val) * 0.5f;
+        constexpr int start = 0;
+        const size_t end = indices.size();
+        float best_threshold = 0.0f;
+        float best_impurity = std::numeric_limits<float>::max();
+        size_t best_left_total = 0;
 
-        const float gini_left = get_impurity(left_counts, left_total);
-        const float gini_right = get_impurity(right_counts, right_total);
+        std::vector<int> left_counts, right_counts;
+        left_counts.resize(num_classes);
+        right_counts.resize(num_classes);
 
-        const float inv_total = 1.0f / static_cast<float>(left_total + right_total);
-        const float weighted_impurity =
-        (static_cast<float>(left_total) * gini_left +
-         static_cast<float>(right_total) * gini_right) * inv_total;
-
-        if (weighted_impurity < best_impurity) {
-            best_impurity = weighted_impurity;
-            best_threshold = threshold;
+        for (const auto &[label, count] : label_counts) {
+            right_counts[label] = count;
         }
 
-        const float impurity_delta = abs(weighted_impurity - prev_impurity);
+        size_t left_total = 0;
+        size_t right_total = end - start;
 
-        if (impurity_delta < impurity_tol) {
-            offset *= 2;
-        } else if (impurity_delta > 0.05) {
-            offset = max(offset / 2, 1);
+        timer.start("histogram - main loop");
+        for (size_t i = 0; i < active_bins_size - 1; ++i) {
+            const int bin = active_bins[i];
+            const int next_bin = active_bins[i + 1];
+
+            for (int label = 0; label < num_classes; ++label) {
+                const int value = histogram[bin][label];
+
+                left_counts[label] += value;
+                right_counts[label] -= value;
+            }
+            left_total += bin_counts[bin];
+            right_total -= bin_counts[bin];
+
+            if (left_total == 0 || right_total == 0) continue;
+
+            const float current_val = X.toValue(static_cast<uint8_t>(bin));
+            const float next_val = X.toValue(static_cast<uint8_t>(next_bin));
+
+            if (current_val == next_val) continue;
+
+            const float threshold = (current_val + next_val) * 0.5f;
+
+            const float gini_left = get_impurity(left_counts, left_total);
+            const float gini_right = get_impurity(right_counts, right_total);
+
+            const float inv_total = 1.0f / static_cast<float>(left_total + right_total);
+            const float weighted_impurity =
+                (static_cast<float>(left_total) * gini_left +
+                 static_cast<float>(right_total) * gini_right) * inv_total;
+
+            if (weighted_impurity < best_impurity) {
+                best_impurity = weighted_impurity;
+                best_threshold = threshold;
+                best_left_total = left_total;
+            }
         }
+        timer.stop("histogram - main loop");
 
-        prev_impurity = weighted_impurity;
-    }
-
-    timer.stop("treshold: main");
-
-    return std::move(pair{best_threshold, best_impurity});
+        return std::make_tuple(best_threshold, best_impurity, best_left_total);
 }
 
 float DecisionTreeClassifier::gini(const vector<int> &counts, const int total) {
@@ -287,6 +317,10 @@ vector<int> DecisionTreeClassifier::sample_features(const int total_features, co
 }
 
 int DecisionTreeClassifier::compute_majority_class(const unordered_map<int, int> &counts) {
+    if (counts.empty()) {
+        return 0; // Default to class 0 if no counts
+    }
+
     timer.start("majority");
     int majority_class = -1, max_count = -1;
     for (const auto &[label, count]: counts) {

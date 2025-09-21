@@ -7,7 +7,6 @@
 #include <cassert>
 #include <iostream>
 #include <omp.h>
-#include <Eigen/Dense>
 
 #ifdef MPI_AVAILABLE
 #include  <mpi.h>
@@ -17,12 +16,12 @@
 #include "../include/Timer.h"
 using namespace std;
 
-void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, const pair<int, int> &shape) {
-    // vector<float> flat = flatten(X);
-    // fit(flat, y, {X.size(), X[0].size()});
+void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<int> &y) {
+    vector<float> flat = flatten(X);
+    fit(flat, y, pair{X.size(), X[0].size()});
 }
 
-void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<int> &y) {
+void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, const pair<size_t, size_t> &shape) {
     if (X.empty() || y.empty()) {
         cerr << "Cannot build the tree on dataset" << endl;
         exit(EXIT_FAILURE);
@@ -38,7 +37,15 @@ void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<i
     int threads_count = t == -1 ? omp_get_max_threads() : t;
     int num_trees = trees.capacity();
     int rank, size;
-    // timer.set_active(false);
+    int master_seed = rand();
+
+    if (params.random_seed.has_value()) {
+        master_seed = *params.random_seed;
+    }
+
+    seed_seq seq{ master_seed };
+    vector<uint32_t> seeds(num_trees);
+    seq.generate(seeds.begin(), seeds.end());
 
     if (params.mpi) {
 #ifdef MPI_AVAILABLE
@@ -70,26 +77,24 @@ void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<i
         }
 
         DecisionTreeClassifier tree(params.split_criteria, params.min_samples_split, params.max_features,
-                                    params.random_seed, params.min_samples_ratio, params.nworkers);
+                                    seeds[i], params.min_samples_ratio, params.nworkers);
 
         if (params.bootstrap) {
             vector<int> indices;
 
-            timer.start("bootstrap");
-            bootstrap_sample(X.size(), indices);
-            timer.stop("bootstrap");
+            bootstrap_sample(shape.first, indices);
 
-            tree.train(X, y, indices);
+            tree.train(X, shape, y, indices);
         } else {
             vector<int> indices(X.size());
 
             iota(indices.begin(), indices.end(), 0);
-            tree.train(X, y, indices);
+            tree.train(X, shape, y, indices);
         }
 
 #pragma omp critical
         {
-            trees.push_back(tree);
+            trees.push_back(std::move(tree));
         }
     }
 }
@@ -253,7 +258,7 @@ float RandomForestClassifier::f1_score(const vector<int> &y, const vector<int> &
 }
 
 
-void RandomForestClassifier::bootstrap_sample(const int n_samples, vector<int> &indices) const {
+void RandomForestClassifier::bootstrap_sample(const size_t n_samples, vector<int> &indices) const {
     indices.clear();
     indices.reserve(n_samples);
 

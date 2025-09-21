@@ -31,7 +31,7 @@ public:
 
     void fit(const std::vector<std::vector<float>> &X, const std::vector<int> &y);
 
-    void fit(std::vector<float> &X, const std::vector<int> &y, const std::pair<int, int> &shape);
+    void fit(std::vector<float> &X, const std::vector<int> &y, const std::pair<unsigned long, unsigned long> &shape);
 
     [[nodiscard]] int predict(const std::vector<float> &x) const;
 
@@ -43,7 +43,7 @@ private:
     int num_classes = 0;
     std::vector<DecisionTreeClassifier> trees;
 
-    void bootstrap_sample(int n_samples, std::vector<int> &indices) const;
+    void bootstrap_sample(size_t n_samples, std::vector<int> &indices) const;
 
     [[nodiscard]] static float f1_score(const std::vector<int> &y, const std::vector<int> &y_pred) ;
 };
