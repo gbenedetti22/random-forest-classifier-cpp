@@ -13,14 +13,9 @@ using ComputeThresholdFn = std::function<std::tuple<float, float, size_t>(
     const TrainMatrix &,
     const std::vector<int> &,
     std::vector<int> &,
+    size_t start, size_t end,
     int,
     std::unordered_map<int, int> &,
-    int)>;
-
-using SplitLeftRightFn = std::function<std::tuple<std::vector<int>, std::vector<int>>(
-    const TrainMatrix &,
-    const std::vector<int> &,
-    float,
     int)>;
 
 struct SplitterResult {
@@ -44,6 +39,7 @@ public:
         const TrainMatrix &X,
         const std::vector<int> &y,
         std::vector<int> &indices,
+        size_t start, size_t end,
         const std::vector<int> &selected_features,
         std::unordered_map<int, int> &label_counts,
         int num_classes,

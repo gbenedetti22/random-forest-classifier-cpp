@@ -17,11 +17,11 @@
 using namespace std;
 
 void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<int> &y) {
-    vector<float> flat = flatten(X);
+    const vector<float> flat = flatten(X);
     fit(flat, y, pair{X.size(), X[0].size()});
 }
 
-void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, const pair<size_t, size_t> &shape) {
+void RandomForestClassifier::fit(const vector<float> &X, const vector<int> &y, const pair<size_t, size_t> &shape) {
     if (X.empty() || y.empty()) {
         cerr << "Cannot build the tree on dataset" << endl;
         exit(EXIT_FAILURE);
@@ -46,6 +46,33 @@ void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, const p
     seed_seq seq{ master_seed };
     vector<uint32_t> seeds(num_trees);
     seq.generate(seeds.begin(), seeds.end());
+
+    size_t n_samples = 0;
+    if (std::holds_alternative<size_t>(params.max_samples)) {
+        n_samples = std::get<size_t>(params.max_samples);
+    } else {
+        if (const float perc = std::get<float>(params.max_samples); perc == -1.0F) {
+            n_samples = shape.first;
+        }else {
+            if (perc < 0.0 || perc > 1.0) {
+                cerr << "max_samples (float) must be between 0 and 1" << endl;
+                exit(EXIT_FAILURE);
+            }
+            n_samples = static_cast<size_t>(shape.first * perc);
+        }
+    }
+
+    cout << "Numero campioni usati: " << n_samples << " su " << shape.first << endl;
+
+    const DTreeParams dtp(
+        params.split_criteria,
+        params.min_samples_split,
+        params.max_features,
+        params.min_samples_ratio,
+        params.nworkers,
+        params.max_depth,
+        params.max_leaf_nodes
+    );
 
     if (params.mpi) {
 #ifdef MPI_AVAILABLE
@@ -76,13 +103,12 @@ void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, const p
             }
         }
 
-        DecisionTreeClassifier tree(params.split_criteria, params.min_samples_split, params.max_features,
-                                    seeds[i], params.min_samples_ratio, params.nworkers);
+        DecisionTreeClassifier tree(dtp, seeds[i]);
 
         if (params.bootstrap) {
             vector<int> indices;
 
-            bootstrap_sample(shape.first, indices);
+            bootstrap_sample(n_samples, shape.first, indices);
 
             tree.train(X, shape, y, indices);
         } else {
@@ -258,7 +284,7 @@ float RandomForestClassifier::f1_score(const vector<int> &y, const vector<int> &
 }
 
 
-void RandomForestClassifier::bootstrap_sample(const size_t n_samples, vector<int> &indices) const {
+void RandomForestClassifier::bootstrap_sample(const size_t n_samples, const size_t total_features, vector<int> &indices) const {
     indices.clear();
     indices.reserve(n_samples);
 
@@ -269,7 +295,7 @@ void RandomForestClassifier::bootstrap_sample(const size_t n_samples, vector<int
     }
 
     for (int i = 0; i < n_samples; ++i) {
-        const int idx = rand() % n_samples;
+        const int idx = rand() % total_features;
 
         indices.push_back(idx);
     }

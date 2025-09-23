@@ -17,17 +17,18 @@ public:
         : BaseSplitter(compute_threshold_fn) {
     }
 
-    SplitterResult find_best_split(const TrainMatrix &X, const std::vector<int> &y, std::vector<int> &indices,
+    SplitterResult find_best_split(const TrainMatrix &X, const std::vector<int> &y, std::vector<int> &indices, size_t start, size_t end,
                                    const std::vector<int> &selected_features, std::unordered_map<int, int> &label_counts,
                                    const int num_classes, const float min_samples_ratio) override {
         SplitterResult best_split;
         for (const int f: selected_features) {
-            auto [threshold, impurity, left_total] = compute_threshold_fn(X, y, indices, f, label_counts, num_classes);
+            auto [threshold, impurity, split_point] = compute_threshold_fn(X, y, indices, start, end, f, label_counts, num_classes);
 
             if (impurity < best_split.best_impurity) {
-                const size_t right_total = indices.size() - left_total;
-                const float ratio = static_cast<float>(std::min(left_total, right_total)) /
-                                    static_cast<float>(indices.size());
+                size_t total_left = split_point - start;
+                size_t total_right = end - split_point;
+                const float ratio = static_cast<float>(std::min(total_left, total_right)) /
+                                    static_cast<float>(end - start);
 
                 // ratio = min_samples_leaf (scikit learn)
                 if (ratio > min_samples_ratio) {

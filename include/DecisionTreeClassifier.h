@@ -23,20 +23,35 @@ struct TreeNode {
     TreeNode* left;
     TreeNode* right;
 
-    TreeNode() : is_leaf(true), predicted_class(0), feature_index(-1),
+    TreeNode() : is_leaf(false), predicted_class(0), feature_index(-1),
                  threshold(0.0), left(nullptr), right(nullptr) {}
+};
+
+struct DTreeParams {
+    const std::string& split_criteria;
+    int min_samples_split;
+    const std::variant<int, std::string>& max_features;
+    float min_samples_ratio;
+    int nworkers;
+    int max_depth;
+    size_t max_leaf_nodes;
 };
 
 class DecisionTreeClassifier {
     TreeNode* root;
     std::mt19937 rng;
+    DTreeParams params;
 
     void build_tree(const TrainMatrix &X, const std::vector<int> &y, std::vector<int> &samples);
 
-    static std::tuple<std::vector<int>, std::vector<int>> split_left_right(const TrainMatrix &X, const std::vector<int> &indices, float th, int f);
+    void debug_tree() const;
+
+    static size_t split_left_right(
+        const TrainMatrix &X, std::vector<int> &indices, size_t start, size_t end, float th, int f);
 
     std::tuple<float, float, unsigned long> compute_threshold(const TrainMatrix &X,
-                                                              const std::vector<int> &y, const std::vector<int> &indices, int f, const std::unordered_map<int, int> &label_counts, int
+                                                              const std::vector<int> &y, const std::vector<int> &indices, size_t start, size_t end, int f, const std::unordered_map<
+                                                              int, int> &label_counts, int
                                                               num_classes) const;
     static int compute_majority_class(const std::unordered_map<int, int> &counts);
 
@@ -49,22 +64,12 @@ class DecisionTreeClassifier {
     std::vector<int> sample_features(int total_features, int n_features);
 
 public:
-    const std::string &split_criteria;
-    int min_samples_split;
-    const std::variant<int, std::string>& max_features;
-    float min_samples_ratio;
-    int nworkers;
-
     DecisionTreeClassifier(const DecisionTreeClassifier&) = delete;
     DecisionTreeClassifier& operator=(const DecisionTreeClassifier&) = delete;
 
     DecisionTreeClassifier(DecisionTreeClassifier&& other) noexcept
             : root(other.root), rng(other.rng),
-              split_criteria(other.split_criteria),
-              min_samples_split(other.min_samples_split),
-              max_features(other.max_features),
-              min_samples_ratio(other.min_samples_ratio),
-              nworkers(other.nworkers) {
+              params(other.params) {
         other.root = nullptr;
     }
 
@@ -73,19 +78,16 @@ public:
             this->~DecisionTreeClassifier();
             root = other.root;
             rng = other.rng;
-            min_samples_split = other.min_samples_split;
-            min_samples_ratio = other.min_samples_ratio;
-            nworkers = other.nworkers;
+            params.min_samples_split = other.params.min_samples_split;
+            params.min_samples_ratio = other.params.min_samples_ratio;
+            params.nworkers = other.params.nworkers;
             other.root = nullptr;
         }
         return *this;
     }
 
-DecisionTreeClassifier(const std::string &split_criteria, const int min_samples_split, const std::variant<int, std::string> &max_features,
-        const uint32_t &random_seed, const float min_samples_ratio, const int nworkers)
-        : root(nullptr), split_criteria(split_criteria),
-          min_samples_split(min_samples_split),
-          max_features(max_features), min_samples_ratio(min_samples_ratio), nworkers(nworkers) {
+DecisionTreeClassifier(const DTreeParams &params, const uint32_t &random_seed)
+        : root(nullptr), params(params){
         rng = std::mt19937(random_seed);
     }
 
