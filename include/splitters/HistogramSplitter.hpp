@@ -17,7 +17,7 @@ public:
         : BaseSplitter(compute_threshold_fn) {
     }
 
-    SplitterResult find_best_split(const TrainMatrix &X, const std::vector<int> &y, std::vector<int> &indices, size_t start, size_t end,
+    SplitterResult find_best_split(const TrainMatrix &X, const std::vector<int> &y, std::vector<int> &indices, const size_t start, const size_t end,
                                    const std::vector<int> &selected_features, std::unordered_map<int, int> &label_counts,
                                    const int num_classes, const float min_samples_ratio) override {
         SplitterResult best_split;

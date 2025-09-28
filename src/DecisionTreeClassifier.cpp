@@ -19,8 +19,10 @@
 #include <pdqsort.h>
 #include <TrainMatrix.hpp>
 
+#include "spdlog/spdlog.h"
 #include "splitters/BaseSplitter.hpp"
 #include "splitters/HistogramSplitter.hpp"
+#include "splitters/SplitterFF.hpp"
 
 using namespace std;
 
@@ -84,13 +86,15 @@ void DecisionTreeClassifier::build_tree(const TrainMatrix &X, const vector<int> 
 
     assert(params.nworkers > 0 || params.nworkers == -1);
 
-    const unique_ptr<BaseSplitter> splitter = make_unique<HistogramSplitter>(compute_fn);
-    // if (nworkers == 1) {
-    //     splitter = make_unique<SequentialSplitter>(compute_fn, split_fn);
-    // }else {
-    //     nworkers = nworkers == -1 ? omp_get_max_threads() : nworkers;
-    //     splitter = make_unique<SplitterFF>(compute_fn, split_fn, nworkers);
-    // }
+    int nworkers = params.nworkers;
+    unique_ptr<BaseSplitter> splitter = make_unique<HistogramSplitter>(compute_fn);
+    if (nworkers == 1) {
+        splitter = make_unique<HistogramSplitter>(compute_fn);
+    }else {
+        nworkers = nworkers == -1 ? omp_get_max_threads() : nworkers;
+        splitter = make_unique<SplitterFF>(compute_fn, nworkers);
+    }
+
     stack<tuple<size_t, size_t, TreeNode *, int> > stack;
     stack.emplace(0, indices.size(), root, 0);
     size_t n_leaf_nodes = 0;
@@ -102,8 +106,7 @@ void DecisionTreeClassifier::build_tree(const TrainMatrix &X, const vector<int> 
             max_depth = depth;
         }
 
-        int num_classes = 1;
-
+        int num_classes = 0;
         unordered_map<int, int> label_counts;
         for (size_t i = start; i < end; ++i) {
             const int idx = indices[i];
@@ -113,6 +116,7 @@ void DecisionTreeClassifier::build_tree(const TrainMatrix &X, const vector<int> 
                 num_classes = y[idx];
             }
         }
+        num_classes++;
 
         if (label_counts.size() == 1 || end - start < params.min_samples_split || depth >= params.max_depth ||
             n_leaf_nodes >= params.max_leaf_nodes) {
@@ -198,16 +202,20 @@ tuple<float, float, size_t> DecisionTreeClassifier::compute_threshold(const Trai
                                                                       const int f,
                                                                       const std::unordered_map<int, int> &label_counts,
                                                                       const int num_classes) const {
-    thread_local std::vector histogram(256, std::vector(num_classes, 0));
+    thread_local std::vector histogram(256 * num_classes, 0);
     thread_local int bin_counts[256] = {};
     thread_local uint8_t active_bins[256];
     thread_local int active_bins_size = 0;
 
+    const size_t histogram_size = 256 * static_cast<size_t>(num_classes);
+    if (histogram.size() != histogram_size) {
+        histogram.assign(histogram_size, 0);
+    } else {
+        ranges::fill(histogram, 0);
+    }
+
     std::ranges::fill(bin_counts, 0);
     active_bins_size = 0;
-    for (auto &h: histogram) {
-        std::ranges::fill(h, 0);
-    }
 
     timer.start("histogram - creation");
     for (size_t i = start; i < end; ++i) {
@@ -219,7 +227,7 @@ tuple<float, float, size_t> DecisionTreeClassifier::compute_threshold(const Trai
             active_bins[active_bins_size++] = bin;
         }
 
-        histogram[bin][label]++;
+        histogram[static_cast<size_t>(bin) * static_cast<size_t>(num_classes) + static_cast<size_t>(label)]++;
         bin_counts[bin]++;
     }
     timer.stop("histogram - creation");
@@ -247,7 +255,7 @@ tuple<float, float, size_t> DecisionTreeClassifier::compute_threshold(const Trai
         const int next_bin = active_bins[i + 1];
 
         for (int label = 0; label < num_classes; ++label) {
-            const int value = histogram[bin][label];
+            const int value = histogram[bin * num_classes + label];
 
             left_counts[label] += value;
             right_counts[label] -= value;

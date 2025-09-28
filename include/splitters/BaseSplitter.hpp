@@ -24,6 +24,10 @@ struct SplitterResult {
     int best_feature = -1;
 
     SplitterResult() = default;
+
+    SplitterResult(const float impurity, const float threshold, const int feature)
+        : best_impurity(impurity), best_threshold(threshold), best_feature(feature) {
+    }
 };
 
 class BaseSplitter {

@@ -7,6 +7,9 @@
 #include <cassert>
 #include <iostream>
 #include <omp.h>
+#include <pcg32/pcg_random.hpp>
+
+#include "Logger.hpp"
 
 #ifdef MPI_AVAILABLE
 #include  <mpi.h>
@@ -14,6 +17,9 @@
 
 #include "utils.h"
 #include "../include/Timer.h"
+#include <spdlog/spdlog.h>
+#include <random>
+
 using namespace std;
 
 void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<int> &y) {
@@ -35,7 +41,7 @@ void RandomForestClassifier::fit(const vector<float> &X, const vector<int> &y, c
 
     const int t = params.njobs;
     int threads_count = t == -1 ? omp_get_max_threads() : t;
-    int num_trees = trees.capacity();
+    int num_trees = params.n_trees;
     int rank, size;
     int master_seed = rand();
 
@@ -62,7 +68,7 @@ void RandomForestClassifier::fit(const vector<float> &X, const vector<int> &y, c
         }
     }
 
-    cout << "Numero campioni usati: " << n_samples << " su " << shape.first << endl;
+    spdlog::info("Number of samples used: {} / {}\n", n_samples, shape.first);
 
     const DTreeParams dtp(
         params.split_criteria,
@@ -88,39 +94,31 @@ void RandomForestClassifier::fit(const vector<float> &X, const vector<int> &y, c
 #endif
     }
 
-#pragma omp parallel for if(threads_count > 1) num_threads(threads_count)
-    for (int i = 0; i < num_trees; i++) {
+    for (int i = 0; i < num_trees; ++i) {
+        trees.emplace_back(dtp, seeds[i]);
+    }
 
-#pragma omp critical(output)
-        {
-            if (params.mpi) {
-                const int global_idx = rank * num_trees + i;
-                cout << "Rank: " << rank << " - Thread " << omp_get_thread_num() + 1 << "/" << omp_get_num_threads()
-                    << ": Training tree n. " << global_idx + 1 << endl;
-            }else {
-                cout << "Thread " << omp_get_thread_num() + 1 << "/" << omp_get_num_threads()
-                    << ": Training tree n. " << i + 1 << endl;
-            }
+    spdlog::set_pattern("[%t %H:%M:%S] [%^%l%$] %v");
+
+    #pragma omp parallel for schedule(guided) num_threads(threads_count)
+    for (int i = 0; i < num_trees; i++) {
+        if (params.mpi) {
+            const int global_idx = rank * num_trees + i;
+            spdlog::debug("Rank {} - Thread {} / {} : Training tree n. {}", rank, omp_get_thread_num() + 1,
+                          omp_get_thread_num(), global_idx + 1);
+        } else {
+            spdlog::info("Thread {} / {} : Training tree n. {}", omp_get_thread_num() + 1, omp_get_num_threads(),
+                          i + 1);
         }
 
-        DecisionTreeClassifier tree(dtp, seeds[i]);
-
+        vector<int> indices(n_samples);
         if (params.bootstrap) {
-            vector<int> indices;
-
             bootstrap_sample(n_samples, shape.first, indices);
 
-            tree.train(X, shape, y, indices);
+            trees[i].train(X, shape, y, indices);
         } else {
-            vector<int> indices(X.size());
-
             iota(indices.begin(), indices.end(), 0);
-            tree.train(X, shape, y, indices);
-        }
-
-#pragma omp critical
-        {
-            trees.push_back(std::move(tree));
+            trees[i].train(X, shape, y, indices);
         }
     }
 }
@@ -284,19 +282,21 @@ float RandomForestClassifier::f1_score(const vector<int> &y, const vector<int> &
 }
 
 
-void RandomForestClassifier::bootstrap_sample(const size_t n_samples, const size_t total_features, vector<int> &indices) const {
-    indices.clear();
-    indices.reserve(n_samples);
 
-    if (params.random_seed.has_value()) {
-        srand(params.random_seed.value());
-    } else {
-        srand(time(nullptr));
+void RandomForestClassifier::bootstrap_sample(const size_t n_samples,
+                                              const size_t total_features,
+                                              std::vector<int> &indices) const
+{
+    thread_local pcg32 rng(std::random_device{}());
+    thread_local bool initialized = false;
+
+    if (params.random_seed.has_value() && !initialized) {
+        rng.seed(params.random_seed.value() + omp_get_thread_num());
+        initialized = true;
     }
 
-    for (int i = 0; i < n_samples; ++i) {
-        const int idx = rand() % total_features;
-
-        indices.push_back(idx);
+    for (size_t i = 0; i < n_samples; ++i) {
+        indices[i] = rng(total_features);
     }
 }
+

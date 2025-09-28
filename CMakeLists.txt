@@ -3,8 +3,8 @@ project(decision_tree)
 
 set(CMAKE_CXX_STANDARD 23)
 
-#set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0")
-#set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -O0")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -O0")
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -fno-math-errno -fno-trapping-math -freciprocal-math")
 
 find_package(TBB REQUIRED)
@@ -16,11 +16,14 @@ add_library(libs
         src/RandomForestClassifier.cpp
         src/DecisionTreeClassifier.cpp
         src/Timer.cpp
+        include/splitters/SplitterFF.hpp
+        include/splitters/SplitterMP.hpp
 )
 
 target_include_directories(libs PUBLIC
         ${CMAKE_SOURCE_DIR}/include
-        ${CMAKE_SOURCE_DIR}/eigen
+        ${CMAKE_SOURCE_DIR}/include/pcg32
+        ${CMAKE_SOURCE_DIR}/spdlog
 )
 
 target_link_libraries(libs PUBLIC OpenMP::OpenMP_CXX)

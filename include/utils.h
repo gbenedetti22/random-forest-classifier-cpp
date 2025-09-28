@@ -165,7 +165,7 @@ static std::pair<std::vector<float>, std::vector<int>> generate_matrix(
     return std::pair{matrix, labels};
 }
 
-inline void transpose(const std::vector<std::vector<float>>& src, std::vector<float>& dst, const size_t block_size = 128) {
+inline std::pair<size_t, size_t> transpose(const std::vector<std::vector<float>>& src, std::vector<float>& dst, const size_t block_size = 128) {
     const size_t rows = src.size();
     const size_t cols = src[0].size();
     dst.resize(rows * cols);
@@ -183,6 +183,8 @@ inline void transpose(const std::vector<std::vector<float>>& src, std::vector<fl
             }
         }
     }
+
+    return std::pair{src.size(), src[0].size()};
 }
 
 #endif //UTILS_H

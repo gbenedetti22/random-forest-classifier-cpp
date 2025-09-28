@@ -5,6 +5,8 @@
 // #include <execution>
 
 // #include "utils.h"
+#include <omp.h>
+
 #include "include/Dataset.h"
 #include "include/RandomForestClassifier.h"
 #include "include/Timer.h"
@@ -40,10 +42,10 @@ void print_duration(chrono::steady_clock::duration duration) {
 }
 
 // int main() {
-//     constexpr int dataset_size[] = {2, 7, 10, 20, 30};
+//     // constexpr int dataset_size[] = {2, 7, 10, 20, 30};
 //     timer.set_active(false);
 //
-//     for (const int gb : {10}) {
+//     for (const int gb : {4}) {
 //         cout << "Dataset size: " << gb << "Gb" << endl;
 //
 //         const float GB = gb; // 2, 7, 10, 20, 30
@@ -56,7 +58,9 @@ void print_duration(chrono::steady_clock::duration duration) {
 //         auto [X_train, y_train] = generate_matrix(n_features, bytes);
 //
 //         cout << "Training start " << endl;
-//         RandomForestClassifier model({.n_trees = 40, .random_seed = 8, .njobs = 40, .nworkers = 1});
+//         RandomForestClassifier model({
+//             .n_trees = 100, .random_seed = 0, .njobs = -1, .nworkers = 1
+//         });
 //
 //         const auto start = chrono::steady_clock::now();
 //         model.fit(X_train, y_train, {rows, cols});
@@ -65,40 +69,48 @@ void print_duration(chrono::steady_clock::duration duration) {
 //         cout << "Training end! :)" << endl;
 //         print_duration(end - start);
 //         cout << endl;
+//
+//         // auto [accuracy, f1] = model.evaluate(X_train, y_train);
+//         // cout << "Accuracy: " << accuracy << endl;
+//         // cout << "F1 (Macro): " << f1 << endl;
 //     }
 //
 //     return 0;
 // }
 
 int main() {
+    cout << "PID: " << getpid() << endl << endl;
     timer.set_active(false);
 
     cout << "Loading dataset.." << endl;
-    auto [X, y] = Dataset::load("susy", "../dataset");
-
-     auto [X_train, y_train, X_test, y_test] =
-     Dataset::train_test_split(X, y, 0.7);
+    auto [X, y] = Dataset::load("iris", "../dataset");
+    auto [X_train, y_train, X_test, y_test] =
+    Dataset::train_test_split(X, y, 0.7);
 
     cout << "Training set size: " << X_train.size() << endl;
-    cout << "Test set size: " << X_test.size() << endl << endl;
+    // cout << "Test set size: " << X_test.size() << endl << endl;
     vector<float> X_train_cm;
-    transpose(X_train, X_train_cm);
+    const auto shape = transpose(X_train, X_train_cm);
+    X_train.clear();
+    X_train.shrink_to_fit();
 
-    cout << "Training start " << endl;
-    RandomForestClassifier model({.n_trees = 1, .random_seed = 0, .njobs = 1, .nworkers = 1});
+    RandomForestClassifier model({
+        .n_trees = 1, .random_seed = 17, .njobs = 1, .nworkers = 1
+    });
 
     const auto start = chrono::steady_clock::now();
-    model.fit(X_train_cm, y_train, pair{X_train.size(), X_train[0].size()});
+    model.fit(X_train_cm, y_train, shape);
     const auto end = chrono::steady_clock::now();
 
-    cout << "Training end! :)" << endl;
+    // cout << "Training end! :)" << endl;
     print_duration(end - start);
     cout << endl;
 
-    auto [accuracy, f1] = model.evaluate(X_test, y_test);
-    cout << "Accuracy: " << accuracy << endl;
+    auto [accuracy_new, f1] = model.evaluate(X_test, y_test);
+    cout << "Accuracy: " << accuracy_new << endl;
     cout << "F1 (Macro): " << f1 << endl;
 
-    timer.summary();
+    //
+    // timer.summary();
     return 0;
 }

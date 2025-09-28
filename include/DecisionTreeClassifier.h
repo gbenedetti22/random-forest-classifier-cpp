@@ -44,8 +44,6 @@ class DecisionTreeClassifier {
 
     void build_tree(const TrainMatrix &X, const std::vector<int> &y, std::vector<int> &samples);
 
-    void debug_tree() const;
-
     static size_t split_left_right(
         const TrainMatrix &X, std::vector<int> &indices, size_t start, size_t end, float th, int f);
 
