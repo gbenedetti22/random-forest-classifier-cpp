@@ -21,65 +21,10 @@ static std::vector<float> flatten(const std::vector<std::vector<float> > &X, con
         }
     }
 
-    return result;
+    return std::move(result);
 }
 static std::vector<float> flatten(const std::vector<std::vector<float> > &X) {
-    return flatten(X, X.size() * X[0].size());
-}
-
-static void writeToFile(const std::string& filename,
-                        const std::string& content,
-                        const bool append = true)
-{
-    std::ios_base::openmode mode = std::ios::out;
-    mode |= append ? std::ios::app : std::ios::trunc;
-
-    std::ofstream file(filename, mode);
-    if (!file) {
-        throw std::runtime_error("Impossibile aprire o creare il file: " + filename);
-    }
-
-    file << content << std::endl;
-    if (!file) {
-        throw std::runtime_error("Errore durante la scrittura nel file: " + filename);
-    }
-}
-
-static void writeToFile(const std::string& filename, const int value, const bool append = true) {
-    writeToFile(filename, std::to_string(value), append);
-}
-
-static void writeToFile(const std::string& filename, const long value, const bool append = true) {
-    writeToFile(filename, std::to_string(value), append);
-}
-
-static void writeToFile(const std::string& filename, const float value, const bool append = true) {
-    writeToFile(filename, std::to_string(value), append);
-}
-
-static void writeToFile(const std::string& filename, const double value, const bool append = true) {
-    writeToFile(filename, std::to_string(value), append);
-}
-
-static void writeToFile(const std::string& filename, const char value, const bool append = true) {
-    writeToFile(filename, std::string(1, value), append);
-}
-
-static void writeToFile(const std::string& filename,
-                            const std::chrono::steady_clock::duration& dur,
-                            const bool append = true)
-{
-    using namespace std::chrono;
-
-    const auto h = duration_cast<hours>(dur);
-    const auto m = duration_cast<minutes>(dur - h);
-    const auto s = duration_cast<seconds>(dur - h - m);
-
-    const std::string formatted = std::to_string(h.count()) + "h " +
-                            std::to_string(m.count()) + "m " +
-                            std::to_string(s.count()) + "s";
-
-    writeToFile(filename, formatted, append);
+    return std::move(flatten(X, X.size() * X[0].size()));
 }
 
 static double now() {

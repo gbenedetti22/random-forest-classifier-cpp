@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
     }
 
     double start_eval = MPI_Wtime();
-    auto [accuracy, f1] = model.evaluate(X_test, y_test);
+    auto [accuracy, f1] = model.evaluate(X_test, y_test, TODO);
     MPI_Barrier(MPI_COMM_WORLD);
     double end_eval = MPI_Wtime();
 

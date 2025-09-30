@@ -15,7 +15,6 @@
 #include <ranges>
 #include <stack>
 #include <tuple>
-#include "../include/Timer.h"
 #include <pdqsort.h>
 #include <TrainMatrix.hpp>
 
@@ -42,17 +41,15 @@ void DecisionTreeClassifier::train(const vector<float> &X, const pair<size_t, si
                                    vector<int> &samples) {
     pdqsort_branchless(samples.begin(), samples.end());
 
-    timer.start("matrix");
     const TrainMatrix m(X, shape);
-    timer.stop("matrix");
 
     build_tree(m, y, samples);
 }
 
-int DecisionTreeClassifier::predict(const vector<float> &x) const {
+int DecisionTreeClassifier::predict(const float* sample) const {
     const TreeNode *node = root;
     while (!node->is_leaf) {
-        if (x[node->feature_index] < node->threshold)
+        if (sample[node->feature_index] < node->threshold)
             node = node->left;
         else
             node = node->right;
@@ -129,11 +126,9 @@ void DecisionTreeClassifier::build_tree(const TrainMatrix &X, const vector<int> 
         assert(n_features > 0 && "Invalid max_feature parameter");
         vector<int> selected_features = sample_features(total_features, n_features);
 
-        timer.start("histogram");
         const SplitterResult best_split = splitter->find_best_split(
             X, y, indices, start, end, selected_features, label_counts, num_classes, params.min_samples_ratio
         );
-        timer.stop("histogram");
 
         const int best_feature = best_split.best_feature;
         const float best_threshold = best_split.best_threshold;
@@ -145,9 +140,7 @@ void DecisionTreeClassifier::build_tree(const TrainMatrix &X, const vector<int> 
             continue;
         }
 
-        timer.start("split");
         size_t split_point = split_left_right(X, indices, start, end, best_threshold, best_feature);
-        timer.stop("split");
 
         auto *left_node = new TreeNode();
         auto *right_node = new TreeNode();
@@ -217,7 +210,6 @@ tuple<float, float, size_t> DecisionTreeClassifier::compute_threshold(const Trai
     std::ranges::fill(bin_counts, 0);
     active_bins_size = 0;
 
-    timer.start("histogram - creation");
     for (size_t i = start; i < end; ++i) {
         const int idx = indices[i];
 
@@ -230,7 +222,6 @@ tuple<float, float, size_t> DecisionTreeClassifier::compute_threshold(const Trai
         histogram[static_cast<size_t>(bin) * static_cast<size_t>(num_classes) + static_cast<size_t>(label)]++;
         bin_counts[bin]++;
     }
-    timer.stop("histogram - creation");
 
     pdqsort_branchless(active_bins, active_bins + active_bins_size);
 
@@ -249,7 +240,6 @@ tuple<float, float, size_t> DecisionTreeClassifier::compute_threshold(const Trai
     int left_total = 0;
     int right_total = end - start;
 
-    timer.start("histogram - main loop");
     for (size_t i = 0; i < active_bins_size - 1; ++i) {
         const int bin = active_bins[i];
         const int next_bin = active_bins[i + 1];
@@ -286,7 +276,6 @@ tuple<float, float, size_t> DecisionTreeClassifier::compute_threshold(const Trai
             best_split_point = start + left_total;
         }
     }
-    timer.stop("histogram - main loop");
 
     return std::make_tuple(best_threshold, best_impurity, best_split_point);
 }
@@ -349,7 +338,6 @@ int DecisionTreeClassifier::compute_majority_class(const unordered_map<int, int>
         return 0; // Default to class 0 if no counts
     }
 
-    timer.start("majority");
     int majority_class = -1, max_count = -1;
     for (const auto &[label, count]: counts) {
         if (count > max_count) {
@@ -357,6 +345,5 @@ int DecisionTreeClassifier::compute_majority_class(const unordered_map<int, int>
             majority_class = label;
         }
     }
-    timer.stop("majority");
     return majority_class;
 }

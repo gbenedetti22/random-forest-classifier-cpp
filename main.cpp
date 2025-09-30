@@ -80,10 +80,10 @@ void print_duration(chrono::steady_clock::duration duration) {
 
 int main() {
     cout << "PID: " << getpid() << endl << endl;
-    timer.set_active(false);
+    // timer.set_active(false);
 
     cout << "Loading dataset.." << endl;
-    auto [X, y] = Dataset::load("iris", "../dataset");
+    auto [X, y] = Dataset::load("susy", "../dataset");
     auto [X_train, y_train, X_test, y_test] =
     Dataset::train_test_split(X, y, 0.7);
 
@@ -95,7 +95,7 @@ int main() {
     X_train.shrink_to_fit();
 
     RandomForestClassifier model({
-        .n_trees = 1, .random_seed = 17, .njobs = 1, .nworkers = 1
+        .n_trees = 100, .random_seed = 17, .njobs = -1, .nworkers = 1
     });
 
     const auto start = chrono::steady_clock::now();
@@ -104,13 +104,17 @@ int main() {
 
     // cout << "Training end! :)" << endl;
     print_duration(end - start);
-    cout << endl;
+    cout << endl << endl;
 
-    auto [accuracy_new, f1] = model.evaluate(X_test, y_test);
+    vector<float> X_test_flat = flatten(X_test);
+
+    const auto start2 = chrono::steady_clock::now();
+    auto [accuracy_new, f1] = model.score(X_test_flat, y_test, pair{X_test.size(), X_test[0].size()});
+    const auto end2 = chrono::steady_clock::now();
     cout << "Accuracy: " << accuracy_new << endl;
     cout << "F1 (Macro): " << f1 << endl;
+    print_duration(end2 - start2);
 
-    //
     // timer.summary();
     return 0;
 }

@@ -92,7 +92,9 @@ DecisionTreeClassifier(const DTreeParams &params, const uint32_t &random_seed)
     ~DecisionTreeClassifier();
     void train(const std::vector<float> &X, const std::pair<unsigned long, unsigned long> &shape, const std::vector<int> &y, std::
                vector<int> &samples);
-    [[nodiscard]] int predict(const std::vector<float>& x) const;
+
+    [[nodiscard]] int predict(const float* sample) const;
+
 };
 
 

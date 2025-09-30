@@ -36,9 +36,10 @@ public:
 
     void fit(const std::vector<float> &X, const std::vector<int> &y, const std::pair<unsigned long, unsigned long> &shape);
 
-    [[nodiscard]] int predict(const std::vector<float> &x) const;
+    [[nodiscard]] std::vector<int> predict(const std::vector<float> &X,
+                                           const std::pair<unsigned long, unsigned long> &shape) const;
 
-    [[nodiscard]] std::pair<float, float> evaluate(const std::vector<std::vector<float> > &X, const std::vector<int> &y) const;
+    [[nodiscard]] std::pair<float, float> score(const std::vector<float> &X, const std::vector<int> &y, const std::pair<unsigned long, unsigned long> &shape) const;
 
 
 private:
