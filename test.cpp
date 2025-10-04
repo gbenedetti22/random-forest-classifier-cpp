@@ -7,7 +7,6 @@
 
 #include "Dataset.h"
 #include "DecisionTreeClassifier.h"
-#include "ProgressBarManager.hpp"
 #include "Timer.h"
 #include "TrainMatrix.hpp"
 
@@ -32,36 +31,9 @@ void bytesToHR(long long bytes) {
     std::cout << gb << " GB" << std::endl;
 }
 
-// int main() {
-//     // Crea diverse progress bar
-//     int bar1 = ProgressBarManager::create("", ProgressBarManager::Color::GREEN);
-//     int bar2 = ProgressBarManager::create("", ProgressBarManager::Color::BLUE);
-//     int bar3 = ProgressBarManager::create("", ProgressBarManager::Color::YELLOW);
-//
-//     // Simula lavoro con aggiornamenti
-//     for (int i = 0; i <= 100; ++i) {
-//         ProgressBarManager::update(bar1, i, 100);
-//         ProgressBarManager::update(bar2, i * 0.8, 100);
-//         ProgressBarManager::update(bar3, i * 0.6, 100);
-//
-//         // ProgressBarManager::update(bar1);
-//
-//         std::this_thread::sleep_for(std::chrono::milliseconds(50));
-//     }
-//
-//
-//     // Completa le progress bar
-//     ProgressBarManager::complete(bar1);
-//     ProgressBarManager::complete(bar2);
-//     ProgressBarManager::complete(bar3);
-//
-//     // Pulizia finale
-//     ProgressBarManager::cleanup();
-//
-//     return 0;
-// }
+int main(int argc, char **argv) {
+    cout << argv[2] << endl;
 
-int main() {
     constexpr float GB = 7;
     constexpr long long MU = GB * 1024 * 1024 * 1024;
 
@@ -73,7 +45,7 @@ int main() {
     constexpr long long mu_matrix = ROWS * COLS * sizeof(float);
     constexpr long long mu_indices = ROWS * sizeof(int) * N_THREADS;
     constexpr long long mu_no_indices = ROWS * COLS * sizeof(uint8_t) * N_THREADS;
-    // constexpr long long trees_size = 60279850 * sizeof(TreeNode) * N_THREADS;
+    constexpr long long trees_size = 60279850 * sizeof(TreeNode);
 
     cout << ROWS << endl;
     cout << "Matrice principale" << endl;
@@ -88,9 +60,9 @@ int main() {
     // bytesToHR(mu_no_indices);
     // cout << endl;
     //
-    // cout << "Peso alberi" << endl;
-    // bytesToHR(trees_size);
-    // cout << endl;
+    cout << "Peso alberi" << endl;
+    bytesToHR(trees_size);
+    cout << endl;
 
     return 0;
 }

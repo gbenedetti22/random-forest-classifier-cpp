@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 23)
 
 set(CMAKE_C_FLAGS_DEBUG "${CMAKE_C_FLAGS_DEBUG} -O0 -g")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
-set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -march=native -fno-math-errno -fno-trapping-math -freciprocal-math")
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -fno-math-errno -fno-trapping-math -freciprocal-math")
 
 find_package(TBB REQUIRED)
 find_package(OpenMP REQUIRED)

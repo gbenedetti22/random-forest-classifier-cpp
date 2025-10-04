@@ -24,7 +24,6 @@ public:
         const std::variant<size_t, float> max_samples = -1.0F;
         int njobs = 1;
         int nworkers = 1;
-        mutable bool mpi = false;
     };
 
     explicit RandomForestClassifier(const RandomForestParams &params)
@@ -49,7 +48,6 @@ private:
 
     void bootstrap_sample(size_t n_samples, size_t total_features, std::vector<int> &indices) const;
 
-    [[nodiscard]] static float f1_score(const std::vector<int> &y, const std::vector<int> &y_pred) ;
 };
 
 

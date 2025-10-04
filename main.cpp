@@ -80,7 +80,7 @@ void print_duration(chrono::steady_clock::duration duration) {
 
 int main() {
     cout << "PID: " << getpid() << endl << endl;
-    // timer.set_active(false);
+    timer.set_active(false);
 
     cout << "Loading dataset.." << endl;
     auto [X, y] = Dataset::load("susy", "../dataset");
@@ -88,14 +88,14 @@ int main() {
     Dataset::train_test_split(X, y, 0.7);
 
     cout << "Training set size: " << X_train.size() << endl;
-    // cout << "Test set size: " << X_test.size() << endl << endl;
+    cout << "Test set size: " << X_test.size() << endl << endl;
     vector<float> X_train_cm;
     const auto shape = transpose(X_train, X_train_cm);
     X_train.clear();
     X_train.shrink_to_fit();
 
     RandomForestClassifier model({
-        .n_trees = 100, .random_seed = 17, .njobs = -1, .nworkers = 1
+        .n_trees = 100, .random_seed = 24, .njobs = -1, .nworkers = 1 // seed = 50
     });
 
     const auto start = chrono::steady_clock::now();
@@ -115,6 +115,6 @@ int main() {
     cout << "F1 (Macro): " << f1 << endl;
     print_duration(end2 - start2);
 
-    // timer.summary();
+    timer.summary();
     return 0;
 }
