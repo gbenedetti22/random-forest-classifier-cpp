@@ -44,6 +44,7 @@ public:
 
     void summary() const {
         if (!active) return;
+        std::cout << std::endl;
 
         using namespace tabulate;
 

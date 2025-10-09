@@ -6,92 +6,64 @@
 #define DECISION_TREE_TRAINMATRIX_HPP
 #include <algorithm>
 #include <cmath>
-#include <cstdint>
-#include <iostream>
-#include <limits>
-#include <stdexcept>
+#include <utility>
 #include <vector>
+
+#include "pdqsort.h"
+#include "Timer.h"
 
 class TrainMatrix {
 public:
-    TrainMatrix(const int rows, const int cols) {
-        data.assign(rows, std::vector<uint8_t>(cols));
-    }
+    explicit TrainMatrix(const std::vector<float>& X, const std::pair<size_t, size_t>& shape)
+        : X(X), n_samples(shape.first), n_features(shape.second) {
+        float min = std::numeric_limits<float>::max();
+        float max = std::numeric_limits<float>::min();
 
-    explicit TrainMatrix(const std::vector<std::vector<float>>& X, const std::vector<int> &indices) {
-        if (X.empty() || X[0].empty())
-            throw std::invalid_argument("Matrice vuota!");
-
-        const int n_samples = indices.size();
-        const int n_features = X[0].size();
-
-        std::vector X_transposed(n_features, std::vector<float>(n_samples));
-        data.assign(n_features, std::vector<uint8_t>(n_samples));
-
-        for (int i = 0; i < n_samples; ++i) {
-            const int idx = indices[i];
-
-            for (int f = 0; f < n_features; ++f) {
-                X_transposed[f][i] = X[idx][f];
-            }
+        for (const float value: X) {
+            if (value < min) min = value;
+            if (value > max) max = value;
         }
 
-        minVals.resize(n_features);
-        maxVals.resize(n_features);
-
-        int f_index = 0;
-        for (auto f = X_transposed.begin(); f != X_transposed.end();) {
-            auto [min, max] = std::ranges::minmax(*f);
-
-            minVals[f_index] = min;
-            maxVals[f_index] = max;
-
-            const float range = std::max(max - min, 1.0f);
-
-            for (int i = 0; i < n_samples; ++i) {
-                const float norm = ((*f)[i] - min) / range;
-                const auto q = static_cast<uint8_t>(std::round(norm * 255.0f));
-                data[f_index][i] = q;
-            }
-
-            f = X_transposed.erase(f);
-            f_index++;
-        }
+        global_min = min;
+        range = max - min;
     }
 
-    [[nodiscard]] uint8_t getQuantized(const int i, const int j) const {
-        return data[i][j];
+    [[nodiscard]] uint8_t getQuantized(const size_t i, const size_t j) const {
+        const float norm = (X[i * n_samples + j] - global_min) / range;
+        const auto q = static_cast<uint8_t>(std::round(norm * 255.0f));
+        return q;
     }
 
-    uint8_t& operator()(const int i, const int j) {
-        return data[i][j];
+    const float& operator()(const size_t i, const size_t j) const {
+        return X[i * n_samples + j];
     }
 
-    const uint8_t& operator()(const int i, const int j) const {
-        return data[i][j];
-    }
-
-    // Method to get dequantized value for threshold comparisons
-    [[nodiscard]] float getValue(const int i, const int j) const {
+    [[nodiscard]] float getValue(const size_t i, const size_t j) const {
         return getApprox(i, j);
     }
 
-    [[nodiscard]] float getApprox(const int i, const int j) const {
-        const float minVal = minVals[i];
-        const float maxVal = maxVals[i];
-        const float norm = static_cast<float>(data[i][j]) / 255.0f;
-        return norm * (maxVal - minVal) + minVal;
+    [[nodiscard]] float getApprox(const size_t i, const size_t j) const {
+        const float norm = static_cast<float>(X[i * n_samples + j]) / 255.0f;
+        return norm * range + global_min;
     }
 
-    [[nodiscard]] int rows() const { return data.size(); }
-    [[nodiscard]] int cols() const { return data[0].size(); }
+    [[nodiscard]] float toValue(const uint8_t rawValue) const {
+        const float norm = static_cast<float>(rawValue) / 255.0f;
+        return norm * range + global_min;
+    }
 
-    [[nodiscard]] int nFeatures() const { return rows(); }
-    [[nodiscard]] int nSamples() const { return cols(); }
+    [[nodiscard]] size_t rows() const { return n_samples; }
+    [[nodiscard]] size_t cols() const { return n_features; }
+
+    [[nodiscard]] size_t nFeatures() const { return n_features; }
+    [[nodiscard]] size_t nSamples() const { return n_samples; }
 
 private:
-    std::vector<std::vector<uint8_t>> data;
-    std::vector<float> minVals;
-    std::vector<float> maxVals;
+    const std::vector<float>& X;
+    float range;
+    float global_min;
+
+    const size_t n_samples;
+    const size_t n_features;
 };
 #endif //DECISION_TREE_TRAINMATRIX_HPP

@@ -35,7 +35,7 @@ void Dataset::process_line(vector<vector<float>>& X, vector<int>& y, const strin
 
         vector<float> features;
         for (string &token: tokens) {
-            features.push_back(stod(token));
+            features.push_back(std::stof(token));
         }
 
         if (!labels.contains(label)) {
@@ -44,14 +44,18 @@ void Dataset::process_line(vector<vector<float>>& X, vector<int>& y, const strin
 
         X.push_back(features);
         y.push_back(labels[label]);
-    }else if (dataset_name == "SUSY.csv") {
+    }else if (dataset_name == "SUSY.csv" || dataset_name == "HIGGS.csv") {
         if (line.empty()) return;
 
         size_t start = 0;
         size_t end = line.find(',');
 
-        int label;
-        from_chars(line.data() + start, line.data() + end, label);
+        int label = 0;
+        auto [_, e] = from_chars(line.data() + start, line.data() + end, label);
+
+        if (e != errc()) {
+            label = 0;
+        }
         y.push_back(label);
 
         vector<float> features;
@@ -60,29 +64,81 @@ void Dataset::process_line(vector<vector<float>>& X, vector<int>& y, const strin
         while (end != string::npos) {
             start = end + 1;
             end = line.find(',', start);
-            float val;
-            from_chars(line.data() + start, line.data() + (end == string::npos ? line.size() : end), val);
+            float val = 0.0f;
+            auto [_, e] = from_chars(line.data() + start,
+                                                line.data() + (end == string::npos ? line.size() : end),
+                                                val);
+            if (e != errc()) {
+                val = 0.0f;
+            }
             features.push_back(val);
         }
 
-        X.push_back(move(features));
+        X.push_back(std::move(features));
+    }else if (dataset_name == "criteo.txt") {
+        if (line.empty()) return;
+
+        size_t start = 0;
+        size_t end = line.find('\t');
+
+        int label = 0;
+        auto [_, e] = from_chars(line.data() + start, line.data() + end, label);
+        if (e != errc()) {
+            label = 0;
+        }
+        y.push_back(label);
+
+        vector<float> features;
+        features.reserve(13 + 26);
+
+        for (int i = 0; i < 13 && end != string::npos; i++) {
+            start = end + 1;
+            end = line.find('\t', start);
+
+            float val = 0.0f;
+            auto [__, e2] = from_chars(line.data() + start,
+                                       line.data() + (end == string::npos ? line.size() : end),
+                                       val);
+            if (e2 != errc()) {
+                val = 0.0f;
+            }
+            features.push_back(val);
+        }
+
+        for (int i = 0; i < 26 && end != string::npos; i++) {
+            start = end + 1;
+            end = line.find('\t', start);
+
+            string hash_str = line.substr(start, (end == string::npos ? line.size() : end) - start);
+
+            if (!labels.contains(hash_str)) {
+                labels[hash_str] = label_id++;
+            }
+
+            features.push_back(static_cast<float>(labels[hash_str]));
+        }
+
+        X.push_back(std::move(features));
     }
+
 }
 
 pair<vector<vector<float> >, vector<int>> Dataset::load(string filename,
                               const string& directory,
                               const size_t max_lines) {
-    if (!filename.contains(".")) {
-        if (filename == "iris") {
-            filename = "iris.data";
-        }else if (filename == "susy") {
-            filename = "SUSY.csv";
-        }
-    }
 
-    if (filename != "iris.data" && filename != "SUSY.csv") {
-        cerr << "Error: File name not correctly read." << endl;
-        exit(1);
+    static const std::unordered_map<std::string, std::string> files = {
+        {"iris", "iris.data"},
+        {"susy", "SUSY.csv"},
+        {"higgs", "HIGGS.csv"},
+        {"criteo", "criteo.txt"}
+    };
+
+    if (files.contains(filename)) {
+        filename = files.at(filename);
+    }else {
+        cerr << "Error: File name (" << filename << ") not correctly read." << endl;
+        exit(EXIT_FAILURE);
     }
 
     const fs::path filepath = fs::path(directory) / filename;
@@ -122,7 +178,7 @@ pair<vector<vector<float> >, vector<int>> Dataset::load(string filename,
     vector<vector<float>> features;
     vector<int> labels;
     unordered_map<string, int> labels_mapping;
-    int label_id;
+    int label_id = 0;
 
     for (size_t i = 0; i < filesize && line_count < max_lines; ++i) {
         if (data[i] == '\n' || i == filesize - 1) {
