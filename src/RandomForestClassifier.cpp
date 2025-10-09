@@ -12,22 +12,30 @@
 #include "Logger.hpp"
 
 #include "utils.h"
-#include "../include/Timer.h"
 #include <spdlog/spdlog.h>
 #include <random>
 #include <span>
 #include <ff/ff.hpp>
 
 #include "ff/parallel_for.hpp"
+#include "predictionFF/FarmFF.hpp"
 
 using namespace std;
 
-void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<int> &y) {
-    const vector<float> flat = flatten(X);
-    fit(flat, y, pair{X.size(), X[0].size()});
+void RandomForestClassifier::fit(const vector<vector<float> > &X, const vector<int> &y, const bool transposed) {
+    if (!transposed) {
+        vector<float> X_train_cm;
+        auto shape = transpose(X, X_train_cm);
+        fit(X_train_cm, y, shape, true);
+        return;
+    }
+
+    vector<float> flat = flatten(X);
+    auto shape = pair{X.size(), X[0].size()};
+    fit(flat, y, shape, transposed);
 }
 
-void RandomForestClassifier::fit(const vector<float> &X, const vector<int> &y, const pair<size_t, size_t> &shape) {
+void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, pair<size_t, size_t> &shape, const bool transposed) {
     if (X.empty() || y.empty()) {
         cerr << "Cannot build the tree on dataset" << endl;
         exit(EXIT_FAILURE);
@@ -37,12 +45,18 @@ void RandomForestClassifier::fit(const vector<float> &X, const vector<int> &y, c
         exit(EXIT_FAILURE);
     }
 
+    vector<float>& X_train = X;
+    pair<size_t, size_t>& shape_X_train = shape;
+
+    if (!transposed) {
+        shape_X_train = transpose(X, X_train, shape);
+    }
+
     num_classes = ranges::max(y) + 1;
 
     const int t = params.njobs;
     int threads_count = t == -1 ? omp_get_max_threads() : t;
-    int num_trees = params.n_trees;
-    int rank, size;
+    const int num_trees = params.n_trees;
     int master_seed = rand();
 
     if (params.random_seed.has_value()) {
@@ -68,7 +82,7 @@ void RandomForestClassifier::fit(const vector<float> &X, const vector<int> &y, c
         }
     }
 
-    spdlog::info("Number of samples used: {} / {}\n", n_samples, shape.first);
+    Logger::info("Number of samples used: {} / {}\n", n_samples, shape.first);
 
     const DTreeParams dtp(
         params.split_criteria,
@@ -84,12 +98,10 @@ void RandomForestClassifier::fit(const vector<float> &X, const vector<int> &y, c
         trees.emplace_back(dtp, seeds[i]);
     }
 
-    spdlog::set_pattern("[%t %H:%M:%S] [%^%l%$] %v");
-
     // FastFlow version
     // ff::ParallelFor pf(threads_count);
     // pf.parallel_for(0, num_trees, 1, [&](const size_t i) {
-    //     spdlog::info("Thread {} / {} : Training tree n. {}", omp_get_thread_num() + 1, omp_get_num_threads(),
+    //     Logger::info("Thread {} / {} : Training tree n. {}", omp_get_thread_num() + 1, omp_get_num_threads(),
     //                       i + 1);
     //
     //     vector<int> indices(n_samples);
@@ -103,19 +115,21 @@ void RandomForestClassifier::fit(const vector<float> &X, const vector<int> &y, c
     //     }
     // });
 
-    #pragma omp parallel for schedule(guided) num_threads(threads_count)
+    int chunks = std::max(1, num_trees / (threads_count * 4));
+
+    #pragma omp parallel for schedule(dynamic, chunks) num_threads(threads_count)
     for (int i = 0; i < num_trees; i++) {
-        spdlog::info("Thread {} / {} : Training tree n. {}", omp_get_thread_num() + 1, omp_get_num_threads(),
+        Logger::info("Thread {} / {} : Training tree n. {}", omp_get_thread_num() + 1, omp_get_num_threads(),
                           i + 1);
 
         vector<int> indices(n_samples);
         if (params.bootstrap) {
             bootstrap_sample(n_samples, shape.first, indices);
 
-            trees[i].train(X, shape, y, indices);
+            trees[i].train(X_train, shape_X_train, y, indices);
         } else {
             iota(indices.begin(), indices.end(), 0);
-            trees[i].train(X, shape, y, indices);
+            trees[i].train(X_train, shape_X_train, y, indices);
         }
     }
 }
@@ -128,8 +142,13 @@ vector<int> RandomForestClassifier::predict(const vector<float> &X, const pair<s
     constexpr size_t TILE_TREES = 128;
 
     vector all_votes(n_samples * num_classes, 0);
+    const int njobs = params.njobs < 0 ? omp_get_max_threads() : params.njobs;
+    const int nworkers = params.nworkers < 0 ? omp_get_max_threads() : params.nworkers;
+    int threads_count = std::min(std::abs(njobs * nworkers), omp_get_max_threads());
 
-    #pragma omp parallel for collapse(2)
+    Logger::info("Using: {} threads for prediction", threads_count);
+
+    #pragma omp parallel for collapse(2) num_threads(threads_count)
     for (size_t ii = 0; ii < n_samples; ii += TILE_SAMPLES) {
         for (size_t tt = 0; tt < trees.size(); tt += TILE_TREES) {
             const size_t i_max = std::min(ii + TILE_SAMPLES, n_samples);
@@ -150,7 +169,7 @@ vector<int> RandomForestClassifier::predict(const vector<float> &X, const pair<s
 
     vector predictions(n_samples, 0);
 
-    #pragma omp parallel for
+    #pragma omp parallel for num_threads(threads_count)
     for (int sample_id = 0; sample_id < n_samples; ++sample_id) {
         auto vote_counts = span(all_votes.data() + sample_id * num_classes, num_classes);
         int max_votes = -1;
@@ -169,7 +188,12 @@ vector<int> RandomForestClassifier::predict(const vector<float> &X, const pair<s
     return std::move(predictions);
 }
 
+pair<float, float> RandomForestClassifier::score(const std::vector<std::vector<float>> &X, const std::vector<int> &y) const {
+    return score(flatten(X), y, pair{X.size(), X[0].size()});
+}
+
 pair<float, float> RandomForestClassifier::score(const vector<float> &X, const vector<int> &y, const pair<size_t, size_t>& shape) const {
+    // const auto& all_votes = FarmFF::getVotes(X, shape, trees, 8);
     const auto& all_votes = predict(X, shape);
 
     return make_pair(accuracy(y, all_votes), f1_score(y, all_votes));

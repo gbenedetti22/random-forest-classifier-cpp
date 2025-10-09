@@ -35,9 +35,6 @@ target_link_libraries(main PRIVATE libs)
 add_executable(mpi main_mpi.cpp)
 target_link_libraries(mpi PRIVATE libs)
 
-add_executable(test test.cpp)
-target_link_libraries(test PRIVATE libs)
-
 if(MPI_FOUND)
     message(STATUS "MPI found: ${MPI_C_COMPILER}")
     target_link_libraries(mpi PRIVATE MPI::MPI_CXX)

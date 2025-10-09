@@ -16,12 +16,12 @@
 #include <stack>
 #include <tuple>
 #include <pdqsort.h>
-#include <TrainMatrix.hpp>
 
 #include "spdlog/spdlog.h"
 #include "splitters/BaseSplitter.hpp"
 #include "splitters/HistogramSplitter.hpp"
 #include "splitters/SplitterFF.hpp"
+
 
 using namespace std;
 

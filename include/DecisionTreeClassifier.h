@@ -13,7 +13,6 @@
 #include <TrainMatrix.hpp>
 #include <variant>
 
-#include "utils.h"
 
 struct TreeNode {
     bool is_leaf;
@@ -93,7 +92,7 @@ DecisionTreeClassifier(const DTreeParams &params, const uint32_t &random_seed)
     void train(const std::vector<float> &X, const std::pair<unsigned long, unsigned long> &shape, const std::vector<int> &y, std::
                vector<int> &samples);
 
-    [[nodiscard]] int predict(const float* sample) const;
+    [[nodiscard]] int predict(const float *sample) const;
 
 };
 

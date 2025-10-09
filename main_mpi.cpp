@@ -12,6 +12,7 @@ using namespace std;
 
 int main(int argc, char **argv) {
     MPI_Init(&argc, &argv);
+    auto [params, dataset, max_lines] = parse_args(argc, argv);
 
     int rank, world;
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
@@ -24,10 +25,15 @@ int main(int argc, char **argv) {
     size_t metadata[3] = {0, 0, 0};
 
     if (rank == 0) {
+        cout << "PID: " << getpid() << endl;
+        cout << "Dataset: " << dataset << endl;
+        cout << "N. Threads: " << params.njobs << endl;
+        cout << "N. Threads (FF): " << params.nworkers << endl << endl;
+
         pair<size_t, size_t> test_shape, train_shape;
         cout << "Master node (rank 0) loading dataset..." << endl;
 
-        auto [X, y] = Dataset::load("susy", "../dataset");
+        auto [X, y] = Dataset::load(dataset, "../dataset", max_lines);
         auto [X_train, y_train, X_test, y_test] = Dataset::train_test_split(X, y, 0.7);
 
         vector<float> X_train_flat;
@@ -54,9 +60,8 @@ int main(int argc, char **argv) {
         metadata[1] = n_test_samples;
         metadata[2] = n_features;
 
-        cout << "Train samples: " << n_train_samples
-                << ", Test samples: " << n_test_samples
-                << ", Features: " << n_features << endl;
+        cout << "Training set size: " << n_train_samples << endl;
+        cout << "Test set size: " << n_test_samples << endl;
     }
 
     // Broadcast dei metadati a tutti
@@ -91,34 +96,28 @@ int main(int argc, char **argv) {
     pair train_shape_local = {n_train_samples, n_features};
     pair test_shape_local = {n_test_samples, n_features};
 
-
-    // Ogni nodo allena un sottoinsieme di alberi
-    int n_trees_total = 1000;
-    int n_trees_local = n_trees_total / world;
+    params.n_trees /= world;
     if (rank == 0) {
-        cout << "N. of Trees per node: " << n_trees_local << endl;
+        cout << "N. of Trees per node: " << params.n_trees << endl;
     }
 
-    RandomForestClassifier model({
-        .n_trees = n_trees_local,
-        .random_seed = 24 + rank,
-        .njobs = -1,
-        .nworkers = 1
-    });
+    if (params.random_seed.has_value()) {
+        params.random_seed = *params.random_seed + rank;
+    }
 
-    cout << "Training start: " << rank << endl;
-    auto start_train = chrono::steady_clock::now();
-    model.fit(X_train_flat, y_train, train_shape_local);
-    auto end_train = chrono::steady_clock::now();
+    RandomForestClassifier model(params);
 
-    cout << "Rank " << rank << " finished training in "
-            << chrono::duration_cast<chrono::seconds>(end_train - start_train).count()
-            << "s" << endl;
+    double start_train = MPI_Wtime();
+    model.fit(X_train_flat, y_train, train_shape_local, true);
+    double end_train = MPI_Wtime();
+    double local_train_time = end_train - start_train;
+
+    double train_time = 0.0;
+    MPI_Reduce(&local_train_time, &train_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
     // Predizione sul test set
+    double start_pred = MPI_Wtime();
     vector<int> local_preds = model.predict(X_test_flat, test_shape_local);
-
-    MPI_Barrier(MPI_COMM_WORLD);
 
     // Raccolta di tutte le predizioni in un’unica chiamata
     vector<int> all_preds;
@@ -129,33 +128,56 @@ int main(int argc, char **argv) {
                all_preds.data(), n_test_samples, MPI_INT,
                0, MPI_COMM_WORLD);
 
+    double end_pred = MPI_Wtime();
+    double local_pred_time = end_pred - start_pred;
+
+    double pred_time = 0.0;
+    MPI_Reduce(&local_pred_time,  &pred_time,  1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
+
     // Master node: majority voting e metriche finali
     if (rank == 0) {
+        double start_find_majority_time = MPI_Wtime();
         vector<int> final_preds;
-        final_preds.reserve(n_test_samples);
+        final_preds.resize(n_test_samples);
 
+        #pragma omp parallel for
         for (size_t i = 0; i < n_test_samples; ++i) {
-            unordered_map<int, int> votes;
+            std::unordered_map<int, int> votes;
+
             for (int r = 0; r < world; ++r) {
                 int pred = all_preds[r * n_test_samples + i];
                 votes[pred]++;
             }
 
             int maj_class = -1, max_votes = -1;
-            for (auto &[label, count]: votes) {
+            for (auto &[label, count] : votes) {
                 if (count > max_votes) {
                     max_votes = count;
                     maj_class = label;
                 }
             }
 
-            final_preds.push_back(maj_class);
+            final_preds[i] = maj_class;
         }
 
-        auto [accuracy, f1] = compute_metrics(y_test, final_preds);
 
+        auto [accuracy, f1] = compute_metrics(y_test, final_preds);
+        double end_find_majority_time = MPI_Wtime();
+
+        double pred_time_total = pred_time + (end_find_majority_time - start_find_majority_time);
+
+        cout << "Train Time: " << train_time << "s" << endl;
+        cout << "Predicate Time: " << pred_time << "s" << endl;
         cout << "Accuracy: " << accuracy << endl;
         cout << "F1 (Macro): " << f1 << endl;
+
+        ofstream file("results.csv", ios::app);
+        if (file.tellp() == 0) {
+            file << "n_nodes,n_threads,train_time,predict_time\n";
+        }
+        file << world << "," << params.njobs << ","
+             << train_time << "," << pred_time_total << "\n";
+        file.close();
     }
 
     MPI_Finalize();
