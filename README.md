@@ -26,7 +26,7 @@ Benchmarked my implementation against scikit-learn on a dataset with:
 | C++ Random Forest (this project) | 🟢 **1m 11.763s** |
 | scikit-learn        | 🔸 ~ **14m 35s**  |
 
-With a constant memory usage (approx 1.4Gb)
+With the following memory usage for the C++ implementation:
 <img width="800" height="600" alt="massif" src="https://github.com/user-attachments/assets/9f4ea098-b39b-46ec-bc7d-cb0a4934dd7e" />
 
 ---
