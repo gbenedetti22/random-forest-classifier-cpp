@@ -1,6 +1,6 @@
-# 🚀 High-Performance Random Forest Classifier (C++)
+# A (very) fast Random Forest Classifier (C++)
 
-## 📝 Description
+## Description
 
 This project implements an **highly optimized Random Forest Classifier in C++**, designed to deliver **state-of-the-art training speed and accuracy**, while maintaining the **same user-friendly interface** as scikit-learn.
 
@@ -13,7 +13,7 @@ Our implementation is engineered for:
 
 ---
 
-## ⚡ Performance
+## Performance
 
 Benchmarked my implementation against scikit-learn on a dataset with:
 
@@ -39,13 +39,13 @@ With a constant memory usage (approx 1.4Gb)
 
 ---
 
-## 🧰 Installation
+## Installation
 
 Just clone this repository and copy all the content from src/ and include/ directory into your project, no external dependences are needed.
 
 ---
 
-## 🧠 How to Use
+## How to Use
 
 The interface mimics sklearn’s `RandomForestClassifier`:
 
@@ -103,7 +103,7 @@ int main() {
 
 ---
 
-## ⚙️ Available Parameters
+## Available Parameters
 
 All hyperparameters match sklearn’s naming and behavior as closely as possible, with sensible defaults:
 
@@ -122,6 +122,6 @@ All hyperparameters match sklearn’s naming and behavior as closely as possible
 | `njobs`             | `int`                      | `1`        | Number of threads used for training (`-1` means use all)     |
 | `nworkers`          | `int`                      | `1`        | If you have more threads than trees to construct, setting this can speedup a lot   |
 
-## 📜 License
+## License
 
 This project is released under the **MIT License**.
