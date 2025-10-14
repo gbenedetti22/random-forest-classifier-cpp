@@ -193,7 +193,12 @@ pair<float, float> RandomForestClassifier::score(const std::vector<std::vector<f
 }
 
 pair<float, float> RandomForestClassifier::score(const vector<float> &X, const vector<int> &y, const pair<size_t, size_t>& shape) const {
-    // const auto& all_votes = FarmFF::getVotes(X, shape, trees, 8);
+    // const int njobs = params.njobs < 0 ? omp_get_max_threads() : params.njobs;
+    // const int nworkers = params.nworkers < 0 ? omp_get_max_threads() : params.nworkers;
+    // const int threads_count = std::min(std::abs(njobs * nworkers), omp_get_max_threads());
+    //
+    // cout << "Threads used for prediction: " << threads_count << endl;
+    // const auto& all_votes = FarmFF::getVotes(X, shape, trees, threads_count, num_classes);
     const auto& all_votes = predict(X, shape);
 
     return make_pair(accuracy(y, all_votes), f1_score(y, all_votes));

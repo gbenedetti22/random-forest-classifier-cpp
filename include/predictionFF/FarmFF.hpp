@@ -5,6 +5,7 @@
 #ifndef DECISION_TREE_FARMFF_HPP
 #define DECISION_TREE_FARMFF_HPP
 #include <../ff/ff.hpp>
+#include <chrono>
 
 #include "../DecisionTreeClassifier.h"
 
@@ -16,9 +17,9 @@ class FarmFF {
         size_t tree_end;
     };
 
-    struct SamplePrediction {
+    struct SampleVotes {
         size_t sample_id;
-        std::vector<int> predictions;
+        std::vector<int> votes;  // votes[label] = count
     };
 
     struct Emitter final : ff::ff_node_t<Task> {
@@ -63,30 +64,42 @@ class FarmFF {
         }
     };
 
-    struct Worker final : ff::ff_node_t<Task, SamplePrediction> {
+    struct Worker final : ff::ff_node_t<Task, SampleVotes> {
         const std::vector<DecisionTreeClassifier>& trees;
         const std::vector<float>& X;
         const std::pair<size_t, size_t> shape;
+        const int num_classes;
+
+        std::chrono::duration<double, std::milli> total_time{0};
+        size_t svc_calls = 0;
 
         explicit Worker(const std::vector<DecisionTreeClassifier>& trees,
                        const std::vector<float>& x,
-                       const std::pair<size_t, size_t> &shape)
-            : trees(trees), X(x), shape(shape) {
+                       const std::pair<size_t, size_t> &shape, const int num_classes)
+            : trees(trees), X(x), shape(shape), num_classes(num_classes) {
         }
 
-        SamplePrediction* svc(Task* task) override {
+        SampleVotes* svc(Task* task) override {
             for (size_t sample_idx = task->sample_start; sample_idx < task->sample_end; sample_idx++) {
                 std::vector<int> predictions;
                 predictions.reserve(task->tree_end - task->tree_start);
 
                 const float* sample_ptr = X.data() + sample_idx * shape.second;
 
+                // Raccogli le predizioni
                 for (size_t tree_idx = task->tree_start; tree_idx < task->tree_end; tree_idx++) {
                     int pred = trees[tree_idx].predict(sample_ptr);
                     predictions.push_back(pred);
                 }
 
-                ff_send_out(new SamplePrediction{sample_idx, std::move(predictions)});
+                // Conta locale dei voti per questo sample
+                std::vector local_votes(num_classes, 0);
+                for (const int prediction : predictions) {
+                    local_votes[prediction]++;
+                }
+
+                // Invia i voti aggregati al Collector
+                ff_send_out(new SampleVotes{sample_idx, std::move(local_votes)});
             }
 
             delete task;
@@ -94,66 +107,46 @@ class FarmFF {
         }
     };
 
-    struct Collector final : ff::ff_node_t<SamplePrediction> {
+    struct Collector final : ff::ff_node_t<SampleVotes> {
         const size_t num_samples;
         const size_t num_trees;
-        std::unordered_map<size_t, std::unordered_map<int, int>> sample_votes;
-        std::unordered_map<size_t, size_t> predictions_received;
-        std::vector<int> final_predictions;
+        std::vector<std::vector<int>> sample_votes;
 
-        explicit Collector(const size_t num_samples, const size_t num_trees)
+        explicit Collector(const size_t num_samples, const size_t num_trees, const int num_classes)
             : num_samples(num_samples), num_trees(num_trees) {
-            final_predictions.resize(num_samples, 0);
+            sample_votes.assign(num_samples, std::vector(num_classes, 0));
         }
 
-        SamplePrediction* svc(SamplePrediction* pred) override {
-            const size_t sample_id = pred->sample_id;
+        SampleVotes* svc(SampleVotes* votes) override {
+            const size_t sample_id = votes->sample_id;
 
-            for (int prediction : pred->predictions) {
-                sample_votes[sample_id][prediction]++;
+            for (int label = 0; label < votes->votes.size(); label++) {
+                sample_votes[sample_id][label] += votes->votes[label];
             }
 
-            predictions_received[sample_id] += pred->predictions.size();
+            delete votes;
 
-            if (predictions_received[sample_id] == num_trees) {
-                int best_class = -1;
-                int max_votes = 0;
-                for (const auto& [label, count] : sample_votes[sample_id]) {
-                    if (count > max_votes) {
-                        max_votes = count;
-                        best_class = label;
-                    }
-                }
-                final_predictions[sample_id] = best_class;
-
-                sample_votes.erase(sample_id);
-                predictions_received.erase(sample_id);
-            }
-
-            delete pred;
             return GO_ON;
-        }
-
-        std::vector<int>& getPredictions() {
-            return final_predictions;
         }
     };
 
 public:
-    static std::vector<int>& getVotes(const std::vector<float>& samples, std::pair<size_t, size_t> shape,
-                                      const std::vector<DecisionTreeClassifier>& trees, int nworkers) {
+    static std::vector<int> getVotes(const std::vector<float>& samples, std::pair<size_t, size_t> shape,
+                                      const std::vector<DecisionTreeClassifier>& trees, int nworkers, int num_classes) {
         ff::ff_farm farm;
 
-        farm.add_emitter(new Emitter(samples, shape, trees.size(), nworkers));
+        auto emitter = new Emitter(samples, shape, trees.size(), nworkers);
+        farm.add_emitter(emitter);
 
         std::vector<ff::ff_node*> workers;
         workers.reserve(nworkers);
         for (int i = 0; i < nworkers; i++) {
-            workers.push_back(new Worker(trees, samples, shape));
+            auto w = new Worker(trees, samples, shape, num_classes);
+            workers.push_back(w);
         }
         farm.add_workers(workers);
 
-        auto collector = new Collector(shape.first, trees.size());
+        auto collector = new Collector(shape.first, trees.size(), num_classes);
         farm.add_collector(collector);
 
         farm.no_mapping();
@@ -164,7 +157,24 @@ public:
             exit(EXIT_FAILURE);
         }
 
-        return collector->getPredictions();
+        std::vector<int> final_predictions(shape.first);
+        auto& votes = collector->sample_votes;
+
+        #pragma omp parallel for num_threads(nworkers)
+        for (size_t sample_id = 0; sample_id < shape.first; sample_id++) {
+            int best_class = -1;
+            int max_votes = 0;
+            for (int label = 0; label < votes[sample_id].size(); label++) {
+                const int count = votes[sample_id][label];
+                if (count > max_votes) {
+                    max_votes = count;
+                    best_class = label;
+                }
+            }
+            final_predictions[sample_id] = best_class;
+        }
+
+        return final_predictions;
     }
 };
 
