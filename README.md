@@ -35,7 +35,7 @@ With the following memory usage for the C++ implementation:
 
 * Memory usage is kept minimal through careful allocations and the use of quantization
 * The implementation use an histogram based technique for a fast threshold computation
-* For learn more about the implementation, check the [report.pdf](report.pdf) file
+* To learn more about the implementation, check the [report.pdf](report.pdf) file
 
 ---
 
