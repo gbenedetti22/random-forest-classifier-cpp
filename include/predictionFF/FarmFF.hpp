@@ -10,16 +10,18 @@
 #include "../DecisionTreeClassifier.h"
 
 class FarmFF {
+    struct SampleVotes {
+        size_t sample_id;
+        std::vector<int> votes;  // votes[label] = count
+    };
+
     struct Task {
         size_t sample_start;
         size_t sample_end;
         size_t tree_start;
         size_t tree_end;
-    };
-
-    struct SampleVotes {
-        size_t sample_id;
-        std::vector<int> votes;  // votes[label] = count
+        bool done;
+        std::vector<SampleVotes> results;
     };
 
     struct Emitter final : ff::ff_node_t<Task> {
@@ -27,40 +29,78 @@ class FarmFF {
         const std::pair<size_t, size_t>& shape;
         const size_t num_trees;
         const int nworkers;
+        const std::vector<DecisionTreeClassifier>& trees;
+        const int num_classes;
         const size_t samples_per_task;
         const size_t trees_per_task;
-        size_t tasks_sent = 0;
         size_t total_tasks = 0;
+        size_t num_tree_chunks = 0;
 
-        explicit Emitter(const std::vector<float>& x, const std::pair<size_t, size_t> &shape, const size_t num_trees, const int nworkers)
+        explicit Emitter(const std::vector<float>& x, const std::pair<size_t, size_t> &shape,
+                         const size_t num_trees, const int nworkers,
+                         const std::vector<DecisionTreeClassifier>& trees, const int num_classes)
             : X(x), shape(shape), num_trees(num_trees), nworkers(nworkers),
-              samples_per_task(std::max(1UL, shape.first / nworkers)),
-              trees_per_task(std::max(1UL, num_trees / nworkers)) {
+              trees(trees), num_classes(num_classes),
+              samples_per_task(std::max(1UL, shape.first / (nworkers + 1))), // Diviso nworkers+1
+              trees_per_task(std::max(1UL, num_trees / (nworkers + 1))) { // Diviso nworkers+1
 
             const size_t num_sample_chunks = (shape.first + samples_per_task - 1) / samples_per_task;
-            const size_t num_tree_chunks = (num_trees + trees_per_task - 1) / trees_per_task;
+            num_tree_chunks = (num_trees + trees_per_task - 1) / trees_per_task;
             total_tasks = num_sample_chunks * num_tree_chunks;
         }
 
         Task* svc(Task*) override {
-            if (tasks_sent >= total_tasks) {
-                return EOS;
+            const size_t tasks_for_emitter = total_tasks / (nworkers + 1);
+
+            std::vector<Task*> tasks;
+            tasks.reserve(tasks_for_emitter);
+
+            for (size_t task_idx = 0; task_idx < total_tasks; ++task_idx) {
+                const size_t sample_chunk_idx = task_idx / num_tree_chunks;
+                const size_t tree_chunk_idx = task_idx % num_tree_chunks;
+
+                const size_t sample_start = sample_chunk_idx * samples_per_task;
+                const size_t sample_end = std::min(sample_start + samples_per_task, shape.first);
+
+                const size_t tree_start = tree_chunk_idx * trees_per_task;
+                const size_t tree_end = std::min(tree_start + trees_per_task, num_trees);
+
+                auto* task = new Task{sample_start, sample_end, tree_start, tree_end, false, {}};
+
+                if (task_idx >= total_tasks - tasks_for_emitter) {
+                    tasks.push_back(task);
+                    continue;
+                }
+
+                ff_send_out(task);
             }
 
-            // Calcola chunk di campioni e alberi per questo task
-            const size_t sample_chunk_idx = tasks_sent / ((num_trees + trees_per_task - 1) / trees_per_task);
-            const size_t tree_chunk_idx = tasks_sent % ((num_trees + trees_per_task - 1) / trees_per_task);
+            for (const auto& task : tasks) {
+                task->done = true;
+                task->results.reserve(task->sample_end - task->sample_start);
 
-            const size_t sample_start = sample_chunk_idx * samples_per_task;
-            const size_t sample_end = std::min(sample_start + samples_per_task, shape.first);
+                for (size_t sample_idx = task->sample_start; sample_idx < task->sample_end; sample_idx++) {
+                    std::vector<int> predictions;
+                    predictions.reserve(task->tree_end - task->tree_start);
 
-            const size_t tree_start = tree_chunk_idx * trees_per_task;
-            const size_t tree_end = std::min(tree_start + trees_per_task, num_trees);
+                    const float* sample_ptr = X.data() + sample_idx * shape.second;
 
-            ff_send_out(new Task{sample_start, sample_end, tree_start, tree_end});
-            tasks_sent++;
+                    for (size_t tree_idx = task->tree_start; tree_idx < task->tree_end; tree_idx++) {
+                        int pred = trees[tree_idx].predict(sample_ptr);
+                        predictions.push_back(pred);
+                    }
 
-            return GO_ON;
+                    std::vector local_votes(num_classes, 0);
+                    for (const int prediction : predictions) {
+                        local_votes[prediction]++;
+                    }
+                    task->results.push_back(SampleVotes{sample_idx, std::move(local_votes)});
+                }
+
+                ff_send_out(task);
+            }
+
+            return EOS;
         }
     };
 
@@ -80,26 +120,29 @@ class FarmFF {
         }
 
         SampleVotes* svc(Task* task) override {
-            for (size_t sample_idx = task->sample_start; sample_idx < task->sample_end; sample_idx++) {
-                std::vector<int> predictions;
-                predictions.reserve(task->tree_end - task->tree_start);
-
-                const float* sample_ptr = X.data() + sample_idx * shape.second;
-
-                // Raccogli le predizioni
-                for (size_t tree_idx = task->tree_start; tree_idx < task->tree_end; tree_idx++) {
-                    int pred = trees[tree_idx].predict(sample_ptr);
-                    predictions.push_back(pred);
+            if (task->done) {
+                for (auto&[sample_id, votes] : task->results) {
+                    ff_send_out(new SampleVotes{sample_id, std::move(votes)});
                 }
+            } else {
+                for (size_t sample_idx = task->sample_start; sample_idx < task->sample_end; sample_idx++) {
+                    std::vector<int> predictions;
+                    predictions.reserve(task->tree_end - task->tree_start);
 
-                // Conta locale dei voti per questo sample
-                std::vector local_votes(num_classes, 0);
-                for (const int prediction : predictions) {
-                    local_votes[prediction]++;
+                    const float* sample_ptr = X.data() + sample_idx * shape.second;
+
+                    for (size_t tree_idx = task->tree_start; tree_idx < task->tree_end; tree_idx++) {
+                        int pred = trees[tree_idx].predict(sample_ptr);
+                        predictions.push_back(pred);
+                    }
+
+                    std::vector local_votes(num_classes, 0);
+                    for (const int prediction : predictions) {
+                        local_votes[prediction]++;
+                    }
+
+                    ff_send_out(new SampleVotes{sample_idx, std::move(local_votes)});
                 }
-
-                // Invia i voti aggregati al Collector
-                ff_send_out(new SampleVotes{sample_idx, std::move(local_votes)});
             }
 
             delete task;
@@ -135,7 +178,7 @@ public:
                                       const std::vector<DecisionTreeClassifier>& trees, int nworkers, int num_classes) {
         ff::ff_farm farm;
 
-        auto emitter = new Emitter(samples, shape, trees.size(), nworkers);
+        auto emitter = new Emitter(samples, shape, trees.size(), nworkers, trees, num_classes);
         farm.add_emitter(emitter);
 
         std::vector<ff::ff_node*> workers;
