@@ -10,6 +10,8 @@
 #include "../DecisionTreeClassifier.h"
 #include "../ff/ff.hpp"
 
+// Parallel prediction using FastFlow's Pipeline pattern.
+// Stages process samples sequentially: Input -> Tree Predictions -> Aggregation.
 class PipelineFF {
     struct SampleData {
         const std::vector<float>& sample;
@@ -18,6 +20,7 @@ class PipelineFF {
 
     };
 
+    // First stage: Feeds samples into the pipeline one by one.
     struct InputStage final : ff::ff_node_t<SampleData> {
         const std::vector<std::vector<float>>& samples;
         int current_sample;
@@ -39,6 +42,8 @@ class PipelineFF {
         }
     };
 
+    // Intermediate stage: Represents a single decision tree.
+    // Updates the prediction vector for the passing sample.
     struct TreeStage final : ff::ff_node_t<SampleData> {
         const std::vector<DecisionTreeClassifier> &trees;
         const int tree_id;
@@ -56,6 +61,7 @@ class PipelineFF {
         }
     };
 
+    // Final stage: Aggregates votes and determines the final class label.
     struct AggregationStage final : ff::ff_node_t<SampleData> {
         std::vector<int>& final_results;
         explicit AggregationStage(std::vector<int>& results) : final_results(results) {}

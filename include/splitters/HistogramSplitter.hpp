@@ -11,6 +11,8 @@
 #include "Timer.h"
 #include "pdqsort.h"
 
+// Sequential implementation of split finding.
+// Iterates through all selected features one by one in the main thread.
 class HistogramSplitter final : public BaseSplitter {
 public:
     explicit HistogramSplitter(const ComputeThresholdFn &compute_threshold_fn)

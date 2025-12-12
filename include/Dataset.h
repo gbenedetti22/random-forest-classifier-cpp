@@ -11,12 +11,17 @@
 #include <vector>
 #include <utility>
 
+// Handles loading, processing, and splitting of datasets for training and testing.
 class Dataset {
 public:
     Dataset();
 
+    // Loads a dataset from a CSV file.
+    // Parses lines, handles labels, and returns a feature matrix (X) and target vector (y).
     static std::pair<std::vector<std::vector<float> >, std::vector<int>> load(std::string filename, const std::string &directory = ".", size_t max_lines = SIZE_MAX);
 
+    // Splits the dataset into training and testing sets.
+    // Supports stratified splitting to maintain class distribution.
     static std::tuple<std::vector<std::vector<float>>, std::vector<int>, std::vector<std::vector<float>>, std::vector<int>> train_test_split(std::vector<std::vector<float>> &X, std::vector<int> &y, float train_perc = 0.8, bool stratified = false);
 
 private:

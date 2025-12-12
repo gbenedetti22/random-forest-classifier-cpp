@@ -9,9 +9,12 @@
 #include <vector>
 #include <DecisionTreeClassifier.h>
 
+// Ensemble classifier using Bagging (Bootstrap Aggregating) of Decision Trees.
 class RandomForestClassifier {
 public:
+    // Hyperparameters for the Random Forest.
     struct RandomForestParams {
+        // Number of trees in the forest.
         int n_trees = 10;
         std::string split_criteria = "gini";
         int min_samples_split = 2;
@@ -31,11 +34,14 @@ public:
         trees.reserve(params.n_trees);
     }
 
+    // Trains the Random Forest on the provided dataset.
+    // Can optionally run in parallel using threads or other backends.
     void fit(const std::vector<std::vector<float>> &X, const std::vector<int> &y, bool transposed = false);
 
     void fit(std::vector<float> &X, const std::vector<int> &y, std::pair<unsigned long, unsigned long> &shape, bool transposed =
                      false);
 
+    // Predicts the class for new samples by aggregating votes from all trees.
     [[nodiscard]] std::vector<int> predict(const std::vector<float> &X,
                                            const std::pair<size_t, size_t> &shape) const;
 
@@ -49,6 +55,7 @@ private:
     int num_classes = 0;
     std::vector<DecisionTreeClassifier> trees;
 
+    // Generates a bootstrap sample (random sampling with replacement) for training a single tree.
     void bootstrap_sample(size_t n_samples, size_t total_features, std::vector<int> &indices) const;
 
 };

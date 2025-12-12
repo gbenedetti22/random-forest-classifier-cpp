@@ -18,13 +18,17 @@ int main(int argc, char **argv) {
     MPI_Comm_rank(MPI_COMM_WORLD, &rank);
     MPI_Comm_size(MPI_COMM_WORLD, &world);
 
-    vector<float> X_flat; // conterrà X_train + X_test
-    vector<int> y_full; // conterrà y_train + y_test
+    vector<float> X_flat; // Buffer to hold the flattened feature matrix (Train + Test).
+    vector<int> y_full;   // Buffer to hold the target vector (Train + Test).
 
-    // Array di metadati: [n_train_samples, n_test_samples, n_features]
+    // Vector of metadata: [n_train_samples, n_test_samples, n_features]
     size_t metadata[3] = {0, 0, 0};
 
     if (rank == 0) {
+        // 1. MASTER NODE INITIALIZATION
+        // The master node (rank 0) is responsible for loading the dataset from disk.
+        // It performs the train/test split and flattens the 2D matrices into 1D arrays
+        // to prepare them for broadcasting via MPI.
         cout << "PID: " << getpid() << endl;
         cout << "Dataset: " << dataset << endl;
         cout << "N. Threads: " << params.njobs << endl;
@@ -45,17 +49,17 @@ int main(int argc, char **argv) {
         size_t n_test_samples = test_shape.first;
         size_t n_features = train_shape.second;
 
-        // Combina train e test in un unico buffer
+        // Combine train and test into a single contiguous buffer for one-shot broadcast.
         X_flat.reserve(X_train_flat.size() + X_test_flat.size());
         X_flat.insert(X_flat.end(), X_train_flat.begin(), X_train_flat.end());
         X_flat.insert(X_flat.end(), X_test_flat.begin(), X_test_flat.end());
 
-        // Combina y_train e y_test
+        // Combine labels
         y_full.reserve(y_train.size() + y_test.size());
         y_full.insert(y_full.end(), y_train.begin(), y_train.end());
         y_full.insert(y_full.end(), y_test.begin(), y_test.end());
 
-        // Metadati
+        // Prepare metadata (dimensions) to inform workers how to resize their buffers.
         metadata[0] = n_train_samples;
         metadata[1] = n_test_samples;
         metadata[2] = n_features;
@@ -64,7 +68,8 @@ int main(int argc, char **argv) {
         cout << "Test set size: " << n_test_samples << endl;
     }
 
-    // Broadcast dei metadati a tutti
+    // 2. BROADCAST DATA
+    // First, broadcast metadata so all nodes know the data size.
     MPI_Bcast(metadata, 3, MPI_UNSIGNED_LONG, 0, MPI_COMM_WORLD);
 
     size_t n_train_samples = metadata[0];
@@ -78,11 +83,12 @@ int main(int argc, char **argv) {
         y_full.resize(total_samples);
     }
 
-    // Broadcast dei dati (dataset completo)
+    // Then, broadcast the actual dataset (features and labels) to all nodes.
+    // Every node gets a full copy of the training data.
     MPI_Bcast(X_flat.data(), total_floats, MPI_FLOAT, 0, MPI_COMM_WORLD);
     MPI_Bcast(y_full.data(), total_samples, MPI_INT, 0, MPI_COMM_WORLD);
 
-    // Estrazione locale di training e test set
+    // Local extraction of training and test set
     vector X_train_flat(X_flat.begin(), X_flat.begin() + n_train_samples * n_features);
     vector X_test_flat(X_flat.begin() + n_train_samples * n_features, X_flat.end());
     X_flat.clear();
@@ -96,17 +102,22 @@ int main(int argc, char **argv) {
     pair train_shape_local = {n_train_samples, n_features};
     pair test_shape_local = {n_test_samples, n_features};
 
+    // 4. DISTRIBUTED TRAINING
+    // This implementation uses Model Parallelism (specifically, training different trees on different nodes).
+    // The total number of trees is divided by the number of MPI reliability nodes (world size).
     params.n_trees /= world;
     if (rank == 0) {
         cout << "N. of Trees per node: " << params.n_trees << endl;
     }
 
+    // Ensure each node has a unique random seed for diversity in tree generation.
     if (params.random_seed.has_value()) {
         params.random_seed = *params.random_seed + rank;
     }
 
     RandomForestClassifier model(params);
 
+    // Each node trains its subset of trees on the full dataset.
     double start_train = MPI_Wtime();
     model.fit(X_train_flat, y_train, train_shape_local, true);
     double end_train = MPI_Wtime();
@@ -115,11 +126,13 @@ int main(int argc, char **argv) {
     double train_time = 0.0;
     MPI_Reduce(&local_train_time, &train_time, 1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
-    // Predizione sul test set
+    // 5. PREDICTION AND GATHERING
+    // Each node predicts the test set using ONLY its local trees.
     double start_pred = MPI_Wtime();
     vector<int> local_preds = model.predict(X_test_flat, test_shape_local);
 
-    // Raccolta di tutte le predizioni in un’unica chiamata
+    // Collect all partial predictions at the master node.
+    // The master receives 'world' arrays of predictions, one from each node.
     vector<int> all_preds;
     if (rank == 0)
         all_preds.resize(world * n_test_samples);
@@ -134,7 +147,9 @@ int main(int argc, char **argv) {
     double pred_time = 0.0;
     MPI_Reduce(&local_pred_time,  &pred_time,  1, MPI_DOUBLE, MPI_MAX, 0, MPI_COMM_WORLD);
 
-    // Master node: majority voting e metriche finali
+    // 6. MAJORITY VOTING (AGGREGATION)
+    // The master node aggregates the predictions from all partial forests (nodes).
+    // For each sample, it counts votes from every node's forest and selects the majority class.
     if (rank == 0) {
         double start_find_majority_time = MPI_Wtime();
         vector<int> final_preds;

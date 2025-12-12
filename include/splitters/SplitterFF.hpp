@@ -9,10 +9,14 @@
 
 #include "BaseSplitter.hpp"
 
+// Implements split finding using FastFlow's parallel_reduce pattern.
+// Computes the best split feature and threshold in parallel across workers.
 class SplitterFF final : public BaseSplitter {
     ff::ParallelForReduce<SplitterResult> pfr;
     const SplitterResult identity_value;
 
+    // Worker task for ParallelForReduce.
+    // Computes thresholds for a subset of features assigned to this thread.
     struct Worker {
         const SplitterFF &parent;
         const TrainMatrix &X;
@@ -59,6 +63,8 @@ class SplitterFF final : public BaseSplitter {
         }
     };
 
+    // Reduction operator to combine results from workers.
+    // Selects the split with the lowest impurity found so far.
     struct Reducer {
         SplitterResult &operator()(SplitterResult &s1, const SplitterResult &s2) const {
             if (s2.best_impurity < s1.best_impurity) {

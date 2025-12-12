@@ -9,21 +9,26 @@
 
 #include "../DecisionTreeClassifier.h"
 
+// Parallel prediction using FastFlow's Farm pattern.
+// Distributes prediction tasks (chunks of samples/trees) to workers.
 class FarmFF {
     struct SampleVotes {
         size_t sample_id;
-        std::vector<int> votes;  // votes[label] = count
+        std::vector<int> votes;  // votes[label] = count. Aggregated votes for a sample.
     };
 
+    // A task represents a subset of samples to be predicted by a subset of trees.
     struct Task {
         size_t sample_start;
         size_t sample_end;
         size_t tree_start;
         size_t tree_end;
-        bool done;
+        bool done; // Flag to indicate task completion/result return.
         std::vector<SampleVotes> results;
     };
 
+    // Emitter node: Generates tasks by slicing samples and trees into chunks.
+    // Schedules tasks to workers.
     struct Emitter final : ff::ff_node_t<Task> {
         const std::vector<float>& X;
         const std::pair<size_t, size_t>& shape;
@@ -104,6 +109,8 @@ class FarmFF {
         }
     };
 
+    // Worker node: Executes the prediction for the assigned task.
+    // Computes votes for the given sample range and tree range.
     struct Worker final : ff::ff_node_t<Task, SampleVotes> {
         const std::vector<DecisionTreeClassifier>& trees;
         const std::vector<float>& X;
@@ -150,6 +157,8 @@ class FarmFF {
         }
     };
 
+    // Collector node: Aggregates votes from all workers for each sample.
+    // Final classification is done after collecting all votes.
     struct Collector final : ff::ff_node_t<SampleVotes> {
         const size_t num_samples;
         const size_t num_trees;

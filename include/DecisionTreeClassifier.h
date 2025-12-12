@@ -14,6 +14,8 @@
 #include <variant>
 
 
+// Represents a node in the decision tree.
+// Can be an internal node (with a split feature and threshold) or a leaf (with a predicted class).
 struct TreeNode {
     bool is_leaf;
     int predicted_class;
@@ -26,7 +28,9 @@ struct TreeNode {
                  threshold(0.0), left(nullptr), right(nullptr) {}
 };
 
+// Hyperparameters for decision tree training.
 struct DTreeParams {
+    // Criterion for splitting (e.g., "gini", "entropy").
     const std::string& split_criteria;
     int min_samples_split;
     const std::variant<int, std::string>& max_features;
@@ -36,17 +40,26 @@ struct DTreeParams {
     size_t max_leaf_nodes;
 };
 
+// Implementation of a CART-like decision tree classifier.
+// Uses iterative partitioning and histogram-based split finding for efficiency.
 class DecisionTreeClassifier {
     TreeNode* root;
     std::mt19937 rng;
     DTreeParams params;
-
+    
+    // Iterative function to build the tree.
+    // Partitions the samples based on the best split found and recurses for children.
     void build_tree(const TrainMatrix &X, const std::vector<int> &y, std::vector<int> &samples);
 
+    // Partitions the sample indices around the threshold 'th' for feature 'f'.
+    // Moves samples < th to the left and samples >= th to the right. Hoare algorithm is used.
     static size_t split_left_right(
         const TrainMatrix &X, std::vector<int> &indices, size_t start, size_t end, float th, int f);
 
-    std::tuple<float, float, unsigned long> compute_threshold(const TrainMatrix &X,
+    // Finds the best threshold for a given feature 'f' using histograms.
+    // Returns {threshold, impurity, split_point}.
+    // Scans quantized bins to efficiently find the split minimizing impurity.
+    [[nodiscard]] std::tuple<float, float, unsigned long> compute_threshold(const TrainMatrix &X,
                                                               const std::vector<int> &y, const std::vector<int> &indices, size_t start, size_t end, int f, const std::unordered_map<
                                                               int, int> &label_counts, int
                                                               num_classes) const;

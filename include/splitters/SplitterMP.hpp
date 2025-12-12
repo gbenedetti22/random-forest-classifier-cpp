@@ -8,6 +8,7 @@
 #include "BaseSplitter.hpp"
 #include "TrainMatrix.hpp"
 
+// Implements split finding using OpenMP for parallelism.
 class SplitterMP final : public BaseSplitter {
     const int nworkers;
 public:
@@ -15,7 +16,9 @@ public:
         : BaseSplitter(compute_threshold_fn), nworkers(nworkers) {
     }
 
-    SplitterResult find_best_split(const TrainMatrix &X, const std::vector<int> &y, std::vector<int> &indices, size_t start, size_t end,
+    // Finds the best split by iterating over features in parallel using OpenMP.
+    // Each thread finds the best local split, and a critical section updates the global best.
+    SplitterResult find_best_split(const TrainMatrix &X, const std::vector<int> &y, std::vector<int> &indices, const size_t start, const size_t end,
                                    const std::vector<int> &selected_features, std::unordered_map<int, int> &label_counts,
                                    const int num_classes, const float min_samples_ratio) override {
         SplitterResult best_split;
@@ -42,7 +45,7 @@ public:
                 }
             }
 
-#pragma omp critical
+            #pragma omp critical
             {
                 if (local_best.best_impurity < best_split.best_impurity) {
                     best_split.best_impurity = local_best.best_impurity;

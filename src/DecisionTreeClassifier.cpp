@@ -166,6 +166,8 @@ size_t DecisionTreeClassifier::split_left_right(
     const size_t end,
     const float th,
     const int f) {
+    // Partitioning algorithm: standard two-pointer approach (Hoare partition scheme variant).
+    // Swaps elements such that all elements < th are on the left, and all >= th are on the right.
     size_t left = start;
     size_t right = end - 1;
 
@@ -195,6 +197,11 @@ tuple<float, float, size_t> DecisionTreeClassifier::compute_threshold(const Trai
                                                                       const int f,
                                                                       const std::unordered_map<int, int> &label_counts,
                                                                       const int num_classes) const {
+    // Histogram-based split finding optimization.
+    // Instead of sorting all feature values, we build a histogram of quantized values (bins).
+    // This reduces complexity from O(N log N) to O(N) for building the histogram + O(B) for scanning bins.
+    
+    // Thread-local buffers to reuse memory and avoid allocations in parallel execution.
     thread_local std::vector histogram(256 * num_classes, 0);
     thread_local int bin_counts[256] = {};
     thread_local uint8_t active_bins[256];
@@ -210,6 +217,13 @@ tuple<float, float, size_t> DecisionTreeClassifier::compute_threshold(const Trai
     std::ranges::fill(bin_counts, 0);
     active_bins_size = 0;
 
+    // 1. Build Histogram
+    // We iterate over all samples in the current node (defined by 'indices' from 'start' to 'end').
+    // For each sample, we:
+    // a. Retrieve the quantized feature value (bin) from the matrix.
+    // b. Increment the count in the histogram for that bin and the sample's class label.
+    //    'histogram' is a flat array where histogram[bin * num_classes + label] stores count of 'label' in 'bin'.
+    // c. Track which bins are non-empty ('active_bins') to avoid iterating over empty 0s later.
     for (size_t i = start; i < end; ++i) {
         const int idx = indices[i];
 
@@ -240,6 +254,10 @@ tuple<float, float, size_t> DecisionTreeClassifier::compute_threshold(const Trai
     int left_total = 0;
     int right_total = end - start;
 
+    // 2. Scan Histogram to find best split
+    // The active bins are sorted. We iterate through them to simulate moving the split point.
+    // 'left_counts' starts empty, 'right_counts' starts with all samples (from node initialization).
+    // As we move from bin i to i+1, we effectively move all samples in bin i from the 'right' child to the 'left' child.
     for (size_t i = 0; i < active_bins_size - 1; ++i) {
         const int bin = active_bins[i];
         const int next_bin = active_bins[i + 1];
@@ -247,6 +265,9 @@ tuple<float, float, size_t> DecisionTreeClassifier::compute_threshold(const Trai
         for (int label = 0; label < num_classes; ++label) {
             const int value = histogram[bin * num_classes + label];
 
+            // Transfer counts for each class from the Right child to the Left child.
+            // This allows us to calculate impurity for both children in O(1) for each split point
+            // without scanning the raw data again.
             left_counts[label] += value;
             right_counts[label] -= value;
         }
