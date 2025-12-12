@@ -170,6 +170,7 @@ pair<vector<vector<float> >, vector<int>> Dataset::load(string filename,
         close(fd);
         return {};
     }
+    madvise(file_data, filesize, MADV_SEQUENTIAL | MADV_WILLNEED);
 
     const char* data = static_cast<char*>(file_data);
     size_t line_start = 0;
