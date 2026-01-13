@@ -15,10 +15,7 @@
 #include <spdlog/spdlog.h>
 #include <random>
 #include <span>
-#include <ff/ff.hpp>
 
-#include "ff/parallel_for.hpp"
-#include "predictionFF/FarmFF.hpp"
 
 using namespace std;
 
@@ -97,23 +94,6 @@ void RandomForestClassifier::fit(vector<float> &X, const vector<int> &y, pair<si
     for (int i = 0; i < num_trees; ++i) {
         trees.emplace_back(dtp, seeds[i]);
     }
-
-    // FastFlow version
-    // ff::ParallelFor pf(threads_count);
-    // pf.parallel_for(0, num_trees, 1, [&](const size_t i) {
-    //     Logger::info("Thread {} / {} : Training tree n. {}", omp_get_thread_num() + 1, omp_get_num_threads(),
-    //                       i + 1);
-    //
-    //     vector<int> indices(n_samples);
-    //     if (params.bootstrap) {
-    //         bootstrap_sample(n_samples, shape.first, indices);
-    //
-    //         trees[i].train(X, shape, y, indices);
-    //     } else {
-    //         iota(indices.begin(), indices.end(), 0);
-    //         trees[i].train(X, shape, y, indices);
-    //     }
-    // });
 
     int chunks = std::max(1, num_trees / (threads_count * 4));
 

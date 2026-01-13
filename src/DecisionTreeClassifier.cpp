@@ -20,8 +20,7 @@
 #include "spdlog/spdlog.h"
 #include "splitters/BaseSplitter.hpp"
 #include "splitters/HistogramSplitter.hpp"
-#include "splitters/SplitterFF.hpp"
-
+#include "splitters/SplitterMP.hpp"
 
 using namespace std;
 
@@ -89,7 +88,7 @@ void DecisionTreeClassifier::build_tree(const TrainMatrix &X, const vector<int> 
         splitter = make_unique<HistogramSplitter>(compute_fn);
     }else {
         nworkers = nworkers == -1 ? omp_get_max_threads() : nworkers;
-        splitter = make_unique<SplitterFF>(compute_fn, nworkers);
+        splitter = make_unique<SplitterMP>(compute_fn, nworkers);
     }
 
     stack<tuple<size_t, size_t, TreeNode *, int> > stack;
